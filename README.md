@@ -10,12 +10,23 @@
 >I wrote a set of libraries for it to control the various wifi modules, and i2C modules
 >
 # hardware list
-ordered done describe ...todo  
 
-# describe Main.cpp todo / to code 
-basic wifi comm done, testing each module, and bread board setup todo..
+Ordered done describe ...todo  
 
-# Quick reference of the libraries i wrote.
+-----
+# Wiring
+
+and bread board setup todo..
+
+-----
+
+# Describe Main.cpp todo / to code 
+
+basic wifi comm done, testing each module, 
+
+-----
+# Quick reference of the libraries I wrote.
+
 ## DisplayManager Quick Reference
 
 ### Constructor & Init
