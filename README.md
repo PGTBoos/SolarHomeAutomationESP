@@ -1,5 +1,6 @@
 ><H1> SolarHomeAutomationESP </H1>
 >My cheap home automation project, (for solar cells and power regulation)
+> Based upon an ESP32 Wroom dev board
 >The idea here is to Monitor power production in winter time.
 >
 >If enough power turn on a cheap heater.
