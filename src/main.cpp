@@ -254,6 +254,9 @@ void setup() {
 void loop() {
     // Update sensor readings
     sensors.update();
+
+    // Reminder the arrow (->) is equivalent to:  float power = (*p1Meter).getCurrentExport(); as by pointer reference (multiple socket devices).
+    
     if (p1Meter) p1Meter->update();
     if (socket1) socket1->update();
     if (socket2) socket2->update();
