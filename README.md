@@ -1,28 +1,30 @@
-<H1> SolarHomeAutomationESP </H1>
-My cheap home automation project, (for solar cells and power regulation)
-The idea here is to Monitor power production in winter time.
+><H1> SolarHomeAutomationESP </H1>
+>My cheap home automation project, (for solar cells and power regulation)
+>The idea here is to Monitor power production in winter time.
+>
+>If enough power turn on a cheap heater.
+>If power drops, turn it off for a minimal 5-minute rest (a cool-down period, for the Elchaepo device).
+>And don't keep it on longer then a certain period, if so cool down and repeat.
+>Also turns of if not enough power.
+>
+>I wrote a set of libraries for it to control the various wifi modules, and i2C modules
+>
+# hardware list
+ordered done describe ...todo  
 
-If enough power turn on a cheap heater.
-If power drops, turn it off for a minimal 5-minute rest (a cool-down period, for the Elchaepo device).
-And don't keep it on longer then a certain period, if so cool down and repeat.
-Also turns of if not enough power.
+# describe Main.cpp todo / to code 
+basic wifi comm done, testing each module, and bread board setup todo..
 
-I wrote a set of libraries for it to control the various wifi modules, and i2C modules
+# Quick reference of the libraries i wrote.
+## DisplayManager Quick Reference
 
-- hardware list
-(...todo ) 
-
-[[TOC]]
-
-# DisplayManager Quick Reference
-
-## Constructor & Init
+### Constructor & Init
 ```cpp
 DisplayManager display;                // Create display instance
 bool success = display.begin();        // Initialize (true if OK)
 ```
 
-## Main Update Function
+### Main Update Function
 ```cpp
 display.updateDisplay(
     float importPower,    // Power in watts
@@ -39,7 +41,7 @@ display.updateDisplay(
 );
 ```
 
-## Individual Page Controls
+### Individual Page Controls
 ```cpp
 // Power display only
 display.showPowerPage(
@@ -65,7 +67,7 @@ display.showSwitchesPage(
 );
 ```
 
-## Hardware Setup
+### Hardware Setup
 ```cpp
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -76,7 +78,7 @@ display.showSwitchesPage(
 - Protocol: I2C
 - Auto-rotation: 3 seconds/page
 
-## Dependencies
+### Dependencies
 ```cpp
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -85,20 +87,20 @@ display.showSwitchesPage(
 
 ----
 
-# EnvironmentSensors Quick Reference
+## EnvironmentSensors Quick Reference
 
-## Constructor & Init
+### Constructor & Init
 ```cpp
 EnvironmentSensors sensors;            // Create sensors instance
 bool success = sensors.begin();        // Initialize (true if any sensor OK)
 ```
 
-## Main Update Function
+### Main Update Function
 ```cpp
 sensors.update();  // Updates all sensor readings
 ```
 
-## Getter Methods
+### Getter Methods
 ```cpp
 float temp = sensors.getTemperature();  // Returns °C
 float humidity = sensors.getHumidity(); // Returns %
@@ -106,13 +108,13 @@ float pressure = sensors.getPressure(); // Returns hPa
 float light = sensors.getLightLevel();  // Returns lux
 ```
 
-## Status Methods
+### Status Methods
 ```cpp
 bool bmeStatus = sensors.hasBME280();   // BME280 sensor status
 bool lightStatus = sensors.hasBH1750(); // Light sensor status
 ```
 
-## Hardware Setup
+### Hardware Setup
 ```cpp
 // BME280 Addresses (tries both)
 #define BME280_ADDRESS_1 0x76
@@ -123,7 +125,7 @@ bool lightStatus = sensors.hasBH1750(); // Light sensor status
 // - BH1750: Light Level (Continuous High Res Mode)
 ```
 
-## Default Values
+### Default Values
 ```cpp
 temperature = 0;  // °C
 humidity = 0;     // %
@@ -131,7 +133,7 @@ pressure = 0;     // hPa
 lightLevel = 0;   // lux
 ```
 
-## Dependencies
+### Dependencies
 ```cpp
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
@@ -139,7 +141,7 @@ lightLevel = 0;   // lux
 #include <BH1750.h>
 ```
 
-## Notes
+### Notes
 - Initializes I2C automatically
 - Returns true if at least one sensor works
 - BME280 tries both addresses (0x76, 0x77)
@@ -148,19 +150,19 @@ lightLevel = 0;   // lux
 
 ----
 
-# HomeP1Device Quick Reference
+## HomeP1Device Quick Reference
 
-## Constructor & Init
+### Constructor & Init
 ```cpp
 HomeP1Device device("192.168.1.x");    // Create with IP address
 ```
 
-## Main Update Function
+### Main Update Function
 ```cpp
 device.update();  // Updates power readings every 1 second
 ```
 
-## Getter Methods
+### Getter Methods
 ```cpp
 float import = device.getCurrentImport();  // Get import power (W)
 float export = device.getCurrentExport();  // Get export power (W)
@@ -168,24 +170,24 @@ float net = device.getNetPower();         // Get net power (import - export)
 bool status = device.isConnected();       // Get connection status
 ```
 
-## Direct Power Reading
+### Direct Power Reading
 ```cpp
 float importPower, exportPower;
 bool success = device.getPowerData(importPower, exportPower);
 ```
 
-## Constants
+### Constants
 ```cpp
 const unsigned long READ_INTERVAL = 1000;  // Update interval (ms)
 ```
 
-## API Endpoint
+### API Endpoint
 ```cpp
 baseUrl = "http://[IP_ADDRESS]"
 endpoint = "/api/v1/data"
 ```
 
-## Dependencies
+### Dependencies
 ```cpp
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -193,14 +195,14 @@ endpoint = "/api/v1/data"
 #include <WiFiClient.h>
 ```
 
-## JSON Response Format
+### JSON Response Format
 ```json
 {
     "active_power_w": float  // Negative for export, Positive for import
 }
 ```
 
-## Notes
+### Notes
 - Updates automatically every second
 - Power values in Watts
 - Negative power values = export
@@ -210,19 +212,19 @@ endpoint = "/api/v1/data"
 
 ----
 
-# HomeSocketDevice Quick Reference
+## HomeSocketDevice Quick Reference
 
-## Constructor & Init
+### Constructor & Init
 ```cpp
 HomeSocketDevice socket("192.168.1.x");    // Create with IP address
 ```
 
-## Main Update Function
+### Main Update Function
 ```cpp
 socket.update();  // Updates state every 1 second
 ```
 
-## Control Methods
+### Control Methods
 ```cpp
 // Set socket state
 bool success = socket.setState(true);   // Turn on
@@ -232,18 +234,18 @@ bool success = socket.setState(false);  // Turn off
 bool state = socket.getState();        // Get current state from device
 ```
 
-## Getter Methods
+### Getter Methods
 ```cpp
 bool state = socket.getCurrentState();  // Get last known state
 bool status = socket.isConnected();     // Get connection status
 ```
 
-## Constants
+### Constants
 ```cpp
 const unsigned long READ_INTERVAL = 1000;  // Update interval (ms)
 ```
 
-## API Endpoints
+### API Endpoints
 ```cpp
 baseUrl = "http://[IP_ADDRESS]"
 endpoints = {
@@ -252,7 +254,7 @@ endpoints = {
 }
 ```
 
-## JSON Formats
+### JSON Formats
 ```json
 // GET Response:
 {
@@ -265,7 +267,7 @@ endpoints = {
 }
 ```
 
-## Dependencies
+### Dependencies
 ```cpp
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -273,7 +275,7 @@ endpoints = {
 #include <WiFiClient.h>
 ```
 
-## Notes
+### Notes
 - Updates automatically every second
 - Uses 256B JSON buffer
 - Maintains last known state on failed reads
@@ -283,15 +285,15 @@ endpoints = {
 
 -----
 
-# TimeSync Quick Reference
+## TimeSync Quick Reference
 
-## Constructor & Init
+### Constructor & Init
 ```cpp
 TimeSync timeSync;              // Create instance
 timeSync.begin();              // Initialize and sync with NTP
 ```
 
-## Time Methods
+### Time Methods
 ```cpp
 // Get current time as string (HH:MM:SS)
 String time = timeSync.getCurrentTime();
@@ -307,26 +309,26 @@ int minutes = timeSync.getCurrentMinutes();
 bool active = timeSync.isTimeBetween("14:00", "16:30");
 ```
 
-## NTP Configuration
+### NTP Configuration
 ```cpp
 const char* ntpServer = "pool.ntp.org"
 const long gmtOffset_sec = 3600      // UTC+1 (Netherlands)
 const int daylightOffset_sec = 3600  // +1 hour DST
 ```
 
-## Time Format Patterns
+### Time Format Patterns
 ```cpp
 time_string = "HH:MM:SS"      // Time output format
 time_range = "HH:MM"          // Format for isTimeBetween()
 ```
 
-## Dependencies
+### Dependencies
 ```cpp
 #include <Arduino.h>
 #include <time.h>
 ```
 
-## Notes
+### Notes
 - Tries 10 times to sync with NTP server
 - 1 second delay between sync attempts
 - Validates time is past year 2024
@@ -335,7 +337,7 @@ time_range = "HH:MM"          // Format for isTimeBetween()
 - All times are in 24-hour format
 - Uses local time (not UTC)
 
-## Example Usage
+### Example Usage
 ```cpp
 // Get current time
 String now = timeSync.getCurrentTime();  // "14:30:45"
@@ -352,33 +354,33 @@ timeSync.getCurrentHourMinute(hour, minute);  // hour=14, minute=30
 
 -----
 
-# WebInterface Quick Reference
+## WebInterface Quick Reference
 
-## Constructor & Init
+### Constructor & Init
 ```cpp
 WebInterface webInterface;      // Create server on port 80
 webInterface.begin();          // Initialize server and SPIFFS
 webInterface.update();         // Handle client requests
 ```
 
-## API Endpoints
+### API Endpoints
 
-### GET Endpoints
+#### GET Endpoints
 ```cpp
 GET /                 // Serves index.html from SPIFFS
 GET /data            // Returns JSON with all sensor data
 ```
 
-### POST Endpoints
+#### POST Endpoints
 ```cpp
 POST /switch/1       // Control switch 1
 POST /switch/2       // Control switch 2
 POST /switch/3       // Control switch 3
 ```
 
-## JSON Formats
+### JSON Formats
 
-### GET /data Response
+#### GET /data Response
 ```json
 {
     "import_power": float,
@@ -395,21 +397,21 @@ POST /switch/3       // Control switch 3
 }
 ```
 
-### POST /switch/{1,2,3} Request
+#### POST /switch/{1,2,3} Request
 ```json
 {
     "state": boolean
 }
 ```
 
-### POST /switch/{1,2,3} Response
+#### POST /switch/{1,2,3} Response
 ```json
 {
     "success": boolean
 }
 ```
 
-## Dependencies
+### Dependencies
 ```cpp
 #include <Arduino.h>
 #include <WebServer.h>
@@ -417,7 +419,7 @@ POST /switch/3       // Control switch 3
 #include <ArduinoJson.h>
 ```
 
-## Notes
+### Notes
 - Server runs on port 80
 - Requires SPIFFS for web files
 - Uses 1KB JSON buffer for data
@@ -426,7 +428,7 @@ POST /switch/3       // Control switch 3
 - All responses are JSON or HTML
 - Error codes: 404 (Not Found), 400 (Bad Request)
 
-## Required SPIFFS Files
+### Required SPIFFS Files
 ```
 /index.html          // Main web interface
 ```
