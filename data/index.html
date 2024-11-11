@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Home Energy Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .switch-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2196F3;
+        }
+
+        .label {
+            color: #666;
+        }
+
+        /* Toggle switch styling */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.toggle-slider {
+            background-color: #2196F3;
+        }
+
+        input:checked+.toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        .status {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .details {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .status-icon {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-on {
+            background-color: #4CAF50;
+        }
+
+        .status-off {
+            background-color: #ccc;
+        }
+
+        .time-info {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .update-recent {
+            color: #4CAF50;
+        }
+
+        .update-old {
+            color: #f44336;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h2>Power Monitor</h2>
+        <div class="grid">
+            <div>
+                <div class="label">Import</div>
+                <div class="value" id="import-power">-- W</div>
+            </div>
+            <div>
+                <div class="label">Export</div>
+                <div class="value" id="export-power">-- W</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Environment</h2>
+        <div class="grid">
+            <div>
+                <div class="label">Temperature</div>
+                <div class="value" id="temperature">--°C</div>
+            </div>
+            <div>
+                <div class="label">Humidity</div>
+                <div class="value" id="humidity">--%</div>
+            </div>
+            <div>
+                <div class="label">Light</div>
+                <div class="value" id="light">-- lux</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card switch-card">
+        <div>
+            <h3><span class="status-icon status-off"></span>Switch 1 (Solar Excess)</h3>
+            <div class="status" id="switch1-status">Off</div>
+            <div class="details">Auto: Power export > 500W</div>
+        </div>
+        <label class="toggle-switch">
+            <input type="checkbox" id="switch1" onchange="toggleSwitch(1, this.checked)">
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+
+    <div class="card switch-card">
+        <div>
+            <h3><span class="status-icon status-off"></span>Switch 2 (Evening Light)</h3>
+            <div class="status" id="switch2-status">Off</div>
+            <div class="details">Auto: Light < 75 lux (After 17:45)</div>
+                    <div class="details" id="switch2-offtime">Today's off time: --:--</div>
+            </div>
+            <label class="toggle-switch">
+                <input type="checkbox" id="switch2" onchange="toggleSwitch(2, this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+
+        <div class="card switch-card">
+            <div>
+                <h3><span class="status-icon status-off"></span>Switch 3 (Evening Light)</h3>
+                <div class="status" id="switch3-status">Off</div>
+                <div class="details">Auto: Light < 50 lux (After 17:30)</div>
+                        <div class="details" id="switch3-offtime">Today's off time: --:--</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="switch3" onchange="toggleSwitch(3, this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="time-info">
+                <div>Current Time: <span id="current-time">--:--:--</span></div>
+                <div>Last Update: <span id="last-update" class="update-recent">--:--:--</span></div>
+            </div>
+
+            <script>
+                let lastUpdateTime = null;
+
+                // Function to toggle switches
+                function toggleSwitch(switchNumber, state) {
+                    fetch(`/switch/${switchNumber}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ state: state })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            updateStatusIcon(switchNumber, state);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            // Revert switch state on error
+                            document.getElementById(`switch${switchNumber}`).checked = !state;
+                        });
+                }
+
+                // Update the status icon for a switch
+                function updateStatusIcon(switchNumber, state) {
+                    const icon = document.querySelector(`#switch${switchNumber}-status`).previousElementSibling.querySelector('.status-icon');
+                    icon.className = 'status-icon ' + (state ? 'status-on' : 'status-off');
+                }
+
+                // Format duration string
+                function formatDuration(seconds) {
+                    if (seconds === 0) return "Off";
+                    const hours = Math.floor(seconds / 3600);
+                    const minutes = Math.floor((seconds % 3600) / 60);
+                    return `On for ${hours}h ${minutes}m`;
+                }
+
+                // Update time displays
+                function updateTimeDisplay() {
+                    const now = new Date();
+                    document.getElementById('current-time').textContent =
+                        now.toLocaleTimeString();
+
+                    if (lastUpdateTime) {
+                        const lastUpdate = document.getElementById('last-update');
+                        const timeDiff = now - lastUpdateTime;
+                        lastUpdate.textContent = lastUpdateTime.toLocaleTimeString();
+                        lastUpdate.className = timeDiff > 5000 ? 'update-old' : 'update-recent';
+                    }
+                }
+
+                // Main data update function
+                function updateData() {
+                    fetch('/data')
+                        .then(response => response.json())
+                        .then(data => {
+                            // Update power values
+                            document.getElementById('import-power').textContent = `${data.import_power} W`;
+                            document.getElementById('export-power').textContent = `${data.export_power} W`;
+
+                            // Update environmental data
+                            document.getElementById('temperature').textContent = `${data.temperature}°C`;
+                            document.getElementById('humidity').textContent = `${data.humidity}%`;
+                            document.getElementById('light').textContent = `${data.light} lux`;
+
+                            // Update switches
+                            data.switches.forEach((switch_data, index) => {
+                                const switchNum = index + 1;
+                                const checkbox = document.getElementById(`switch${switchNum}`);
+                                const statusDiv = document.getElementById(`switch${switchNum}-status`);
+
+                                checkbox.checked = switch_data.state;
+                                statusDiv.textContent = formatDuration(switch_data.duration);
+                                updateStatusIcon(switchNum, switch_data.state);
+
+                                // Update off times for light switches
+                                if (switchNum > 1 && switch_data.off_time) {
+                                    document.getElementById(`switch${switchNum}-offtime`).textContent =
+                                        `Today's off time: ${switch_data.off_time}`;
+                                }
+                            });
+
+                            lastUpdateTime = new Date();
+                            updateTimeDisplay();
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            document.getElementById('last-update').className = 'update-old';
+                        });
+                }
+
+                // Update time display every second
+                setInterval(updateTimeDisplay, 1000);
+
+                // Update data every 2 seconds
+                setInterval(updateData, 2000);
+
+                // Initial update
+                updateData();
+            </script>
+</body>
+
+</html>
