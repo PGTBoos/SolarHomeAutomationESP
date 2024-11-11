@@ -1,14 +1,14 @@
-><H1> SolarHomeAutomationESP </H1>
->My cheap home automation project, (for solar cells and power regulation)
-> Based upon an ESP32 Wroom dev board
->The idea here is to Monitor power production in winter time.
+><H1> SolarHomeAutomationESP </H1>  
+>My cheap home automation project, (for solar cells and power regulation)  
+> Based upon an ESP32 Wroom dev board  
+>The idea here is to Monitor power production in winter time.  
 >
 >If enough power turn on a cheap heater.
->If power drops, turn it off for a minimal 5-minute rest (a cool-down period, for the Elchaepo device).
->And don't keep it on longer then a certain period, if so cool down and repeat.
->Also turns of if not enough power.
+>If power drops, turn it off for a minimal 5-minute rest (a cool-down period, for the Elchaepo device).  
+>And don't keep it on longer then a certain period, if so cool down and repeat.  
+>Also turns of if not enough power.  
 >
->I wrote a set of libraries for it to control the various wifi modules, and i2C modules
+>I wrote a set of libraries for it to control the various wifi modules, and i2C modules  
 >
 # hardware list
 
