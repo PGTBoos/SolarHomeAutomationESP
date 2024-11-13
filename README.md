@@ -11,9 +11,20 @@ Also turns of if not enough power.   <br>
 I wrote a set of libraries for it to control the various wifi modules, and i2C modules  
 
 # hardware list
-
-Ordered done describe ...todo  
-
+> averaged prices, homewizard is a bit pricy perhaps, but the ease of their wifi i licked it.<br>
+> They also had a nice android app to see live data so not a bad deal.
+> 
+| Item | Price (€) |
+|:--|--:|
+| Sensor board BH1750 | 2.25 |
+| Sensor board BME280 | 6.50 |
+| OLED display 128*64 | 15.00 |
+| ESP32 Wroom | 8.00 |
+| Home Wizard P1 | 27.00 |
+| HomeWizard switch | 27.95 |
+| HomeWizard switch | 27.95 |
+| HomeWizard switch | 27.95 |
+| **Total** | **142.60** |
 -----
 # Wiring
 
