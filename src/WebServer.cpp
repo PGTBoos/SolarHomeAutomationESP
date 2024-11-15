@@ -3,7 +3,7 @@
 #include <WebServer.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
-
+#include <WiFi.h>
 class WebInterface
 {
 private:
