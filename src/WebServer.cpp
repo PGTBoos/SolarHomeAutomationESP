@@ -14,12 +14,40 @@ public:
 
     void begin()
     {
+
+        {
+            Serial.println("An error occurred while mounting SPIFFS");
+            return;
+        }
         if (!SPIFFS.begin(true))
         {
             Serial.println("An error occurred while mounting SPIFFS");
             return;
         }
 
+        if (!SPIFFS.exists("/index.html"))
+        {
+            Serial.println("Warning: index.html not found in SPIFFS");
+            Serial.println("SPIFFS contents:");
+            File root = SPIFFS.open("/");
+            File file = root.openNextFile();
+            while (file)
+            {
+                Serial.print("File: ");
+                Serial.println(file.name());
+                file = root.openNextFile();
+            }
+        }
+
+        // Add these debug lines
+        Serial.println("SPIFFS contents:");
+        File root = SPIFFS.open("/");
+        File file = root.openNextFile();
+        while (file)
+        {
+            Serial.println(file.name());
+            file = root.openNextFile();
+        }
         // Serve the main page
         server.on("/", HTTP_GET, [this]()
                   {

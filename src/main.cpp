@@ -2,8 +2,8 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <WiFi.h>
-// libs without headers..i'm lazy
 
+// libs without headers..i'm lazy
 #include "DisplayManager.cpp"
 #include "EnvironmentSensor.cpp"
 #include "HomeP1Device.cpp"
@@ -11,7 +11,6 @@
 #include "TimeSync.cpp"
 #include "WebServer.cpp"
 
-WebInterface webServer;
 // Configuration structure
 struct Config
 {
@@ -36,7 +35,7 @@ HomeSocketDevice *socket1 = nullptr;
 HomeSocketDevice *socket2 = nullptr;
 HomeSocketDevice *socket3 = nullptr;
 TimeSync timeSync;
-WebServer webServer;
+WebInterface webServer;
 
 // Timing variables
 unsigned long lastStateChangeTime[3] = {0, 0, 0};
@@ -262,6 +261,34 @@ void updateDisplay()
 void setup()
 {
   Serial.begin(115200);
+  Serial.begin(115200);
+
+  // Add these debug lines at the start
+  if (!SPIFFS.begin(true))
+  {
+    Serial.println("SPIFFS Mount Failed");
+    Serial.println("Trying to format SPIFFS...");
+    if (SPIFFS.format())
+    {
+      Serial.println("SPIFFS formatted successfully");
+      if (SPIFFS.begin(true))
+      {
+        Serial.println("SPIFFS mounted successfully after format");
+      }
+      else
+      {
+        Serial.println("SPIFFS mount failed even after format");
+      }
+    }
+    else
+    {
+      Serial.println("SPIFFS format failed");
+    }
+  }
+  else
+  {
+    Serial.println("SPIFFS mounted successfully");
+  }
 
   // Load configuration
   if (!loadConfiguration())
@@ -269,26 +296,68 @@ void setup()
     Serial.println("Using default configuration");
   }
 
-  // Initialize components
-  if (!display.begin())
+  // Initialize components with checks
+  Wire.begin(); // Start I2C bus first
+
+  // Try to initialize display
+  if (display.begin())
   {
-    Serial.println("Display initialization failed!");
+    Serial.println("Display initialized successfully");
+  }
+  else
+  {
+    Serial.println("Display not connected or initialization failed!");
+    // Program can continue without display
   }
 
-  if (!sensors.begin())
+  // Try to initialize sensors
+  if (sensors.begin())
   {
-    Serial.println("Sensor initialization failed!");
+    Serial.println("Environmental sensors initialized successfully");
+  }
+  else
+  {
+    Serial.println("Environmental sensors not connected or initialization failed!");
+    // Program can continue without sensors
   }
 
   connectWiFi();
 
   // Initialize network components after WiFi connection
+  // Initialize network components after WiFi connection
   if (WiFi.status() == WL_CONNECTED)
   {
-    p1Meter = new HomeP1Device(config.p1_ip.c_str());
-    socket1 = new HomeSocketDevice(config.socket_1.c_str());
-    socket2 = new HomeSocketDevice(config.socket_2.c_str());
-    socket3 = new HomeSocketDevice(config.socket_3.c_str());
+    // Debug prints for config values
+    Serial.println("Config values:");
+    Serial.println("P1 IP: " + config.p1_ip);
+    Serial.println("Socket 1: " + config.socket_1);
+    Serial.println("Socket 2: " + config.socket_2);
+    Serial.println("Socket 3: " + config.socket_3);
+
+    // Only initialize devices with valid IPs
+    if (config.p1_ip != "" && config.p1_ip != "0" && config.p1_ip != "null")
+    {
+      p1Meter = new HomeP1Device(config.p1_ip.c_str());
+      Serial.println("P1 Meter initialized at: " + config.p1_ip);
+    }
+
+    if (config.socket_1 != "" && config.socket_1 != "0" && config.socket_1 != "null")
+    {
+      socket1 = new HomeSocketDevice(config.socket_1.c_str());
+      Serial.println("Socket 1 initialized at: " + config.socket_1);
+    }
+
+    if (config.socket_2 != "" && config.socket_2 != "0" && config.socket_2 != "null")
+    {
+      socket2 = new HomeSocketDevice(config.socket_2.c_str());
+      Serial.println("Socket 2 initialized at: " + config.socket_2);
+    }
+
+    if (config.socket_3 != "" && config.socket_3 != "0" && config.socket_3 != "null")
+    {
+      socket3 = new HomeSocketDevice(config.socket_3.c_str());
+      Serial.println("Socket 3 initialized at: " + config.socket_3);
+    }
 
     timeSync.begin();
     webServer.begin();
@@ -308,7 +377,6 @@ void loop()
   sensors.update();
 
   // Reminder the arrow (->) is equivalent to:  float power = (*p1Meter).getCurrentExport(); as by pointer reference (multiple socket devices).
-
   if (p1Meter)
     p1Meter->update();
   if (socket1)
@@ -326,7 +394,7 @@ void loop()
 
   // Update display and web interface
   updateDisplay();
-  webServer.update();
+  webServer.update(); // Changed from update() to handleClient()
 
   // Small delay to prevent excessive CPU usage
   delay(100);

@@ -39,7 +39,24 @@ public:
         }
         else
         {
-            Serial.println("Could not sync time");
+            Serial.println("Could not sync time - continuing without time sync");
+        }
+    }
+
+    void getCurrentHourMinute(int &hour, int &minute)
+    {
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo))
+        {
+            hour = timeinfo.tm_hour;
+            minute = timeinfo.tm_min;
+        }
+        else
+        {
+            // If time sync failed, use a default "daytime" value
+            hour = 12; // noon
+            minute = 0;
+            Serial.println("Warning: Using default time values");
         }
     }
 
@@ -81,22 +98,6 @@ public:
         }
 
         return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-    }
-
-    // Get hours and minutes as integers
-    void getCurrentHourMinute(int &hour, int &minute)
-    {
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo))
-        {
-            hour = timeinfo.tm_hour;
-            minute = timeinfo.tm_min;
-        }
-        else
-        {
-            hour = 0;
-            minute = 0;
-        }
     }
 
     // Get current time as minutes since midnight
