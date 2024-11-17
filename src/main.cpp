@@ -261,7 +261,6 @@ void updateDisplay()
 void setup()
 {
   Serial.begin(115200);
-  Serial.begin(115200);
 
   // Add these debug lines at the start
   if (!SPIFFS.begin(true))
