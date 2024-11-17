@@ -1,15 +1,16 @@
+// main.cpp
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <WiFi.h>
 
 // libs without headers..i'm lazy
-#include "DisplayManager.cpp"
-#include "EnvironmentSensor.cpp"
-#include "HomeP1Device.cpp"
-#include "HomeSocketDevice.cpp"
-#include "TimeSync.cpp"
-#include "WebServer.cpp"
+#include "DisplayManager.h"
+#include "EnvironmentSensor.h"
+#include "HomeP1Device.h"
+#include "HomeSocketDevice.h"
+#include "TimeSync.h"
+#include "WebInterface.h"
 
 // Configuration structure
 struct Config
@@ -370,8 +371,30 @@ void setup()
   }
 }
 
+void reconnectWiFi()
+{
+  static unsigned long lastAttempt = 0;
+  const unsigned long RETRY_INTERVAL = 30000; // 30 seconds
+
+  if (WiFi.status() != WL_CONNECTED &&
+      (millis() - lastAttempt > RETRY_INTERVAL || lastAttempt == 0))
+  {
+
+    Serial.println("Reconnecting to WiFi...");
+    WiFi.disconnect();
+    WiFi.begin(config.wifi_ssid.c_str(), config.wifi_password.c_str());
+    lastAttempt = millis();
+  }
+}
+
 void loop()
 {
+  reconnectWiFi();
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    return;
+  }
   // Update sensor readings
   sensors.update();
 

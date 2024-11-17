@@ -1,110 +1,139 @@
 // TimeSync.cpp
-#include <Arduino.h>
-#include <time.h>
+#include "TimeSync.h"
 
-class TimeSync
+bool TimeSync::begin()
 {
-private:
-    const char *ntpServer = "pool.ntp.org";
-    const long gmtOffset_sec = 3600;     // Netherlands is UTC+1
-    const int daylightOffset_sec = 3600; // 3600 seconds = 1 hour
-
-public:
-    TimeSync() {}
-
-    void begin()
+    if (WiFi.status() != WL_CONNECTED)
     {
-        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-        // Wait for time to be set
-        time_t now = 0;
-        struct tm timeinfo = {0};
-        int retry = 0;
-        const int retry_count = 10;
-
-        while (timeinfo.tm_year < (2024 - 1900) && ++retry < retry_count)
-        {
-            Serial.printf("Waiting for time sync... (%d/%d)\n", retry, retry_count);
-            delay(1000);
-            time(&now);
-            localtime_r(&now, &timeinfo);
-        }
-
-        if (timeinfo.tm_year > (2024 - 1900))
-        {
-            Serial.println("Time synchronized!");
-            char time_str[20];
-            strftime(time_str, sizeof(time_str), "%H:%M:%S", &timeinfo);
-            Serial.printf("Current time: %s\n", time_str);
-        }
-        else
-        {
-            Serial.println("Could not sync time - continuing without time sync");
-        }
+        Serial.println("WiFi not connected - cannot sync time");
+        return false;
     }
 
-    void getCurrentHourMinute(int &hour, int &minute)
+    // Configure NTP with Dutch servers
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer, ntpServer2, ntpServer3);
+
+    Serial.println("Attempting to sync with Dutch NTP servers...");
+
+    time_t now = 0;
+    struct tm timeinfo = {0};
+    int retry = 0;
+    const int retry_count = 20;  // Number of retries
+    const int retry_delay = 500; // ms between retries
+
+    while (!getLocalTime(&timeinfo) && ++retry < retry_count)
     {
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo))
+        Serial.printf("NTP Sync attempt %d/%d\n", retry, retry_count);
+        if (retry == 5)
         {
-            hour = timeinfo.tm_hour;
-            minute = timeinfo.tm_min;
+            Serial.println("Initial NTP servers not responding, trying backup servers...");
         }
-        else
-        {
-            // If time sync failed, use a default "daytime" value
-            hour = 12; // noon
-            minute = 0;
-            Serial.println("Warning: Using default time values");
-        }
+        delay(retry_delay);
     }
 
-    String getCurrentTime()
+    if (getLocalTime(&timeinfo))
     {
-        struct tm timeinfo;
-        if (!getLocalTime(&timeinfo))
-        {
-            return "Failed to obtain time";
-        }
-        char timeString[9];
-        strftime(timeString, 9, "%H:%M:%S", &timeinfo);
-        return String(timeString);
+        char time_str[25];
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        Serial.println("✓ Time synchronized successfully!");
+        Serial.printf("Current time: %s\n", time_str);
+        Serial.printf("Timezone: UTC+%d\n", (gmtOffset_sec + daylightOffset_sec) / 3600);
+        timeInitialized = true;
+        return true;
+    }
+    else
+    {
+        Serial.println("× Failed to sync time after multiple attempts");
+        Serial.println("Diagnostic information:");
+        Serial.printf("WiFi status: %d\n", WiFi.status());
+        Serial.printf("WiFi SSID: %s\n", WiFi.SSID().c_str());
+        Serial.printf("WiFi IP: %s\n", WiFi.localIP().toString().c_str());
+        Serial.println("Please check:");
+        Serial.println("1. WiFi connection is stable");
+        Serial.println("2. NTP ports (123 UDP) aren't blocked");
+        Serial.println("3. DNS resolution is working");
+        timeInitialized = false;
+        return false;
+    }
+}
+
+void TimeSync::getCurrentHourMinute(int &hour, int &minute)
+{
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo))
+    {
+        hour = timeinfo.tm_hour;
+        minute = timeinfo.tm_min;
+        Serial.printf("Current time: %02d:%02d\n", hour, minute);
+    }
+    else
+    {
+        hour = 12;
+        minute = 0;
+        Serial.println("⚠ Could not get current time, using default (12:00)");
+        timeInitialized = false; // Mark time as not synchronized
+    }
+}
+
+String TimeSync::getCurrentTime()
+{
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo))
+    {
+        Serial.println("⚠ Failed to obtain time");
+        timeInitialized = false; // Mark time as not synchronized
+        return "Time not set";
     }
 
-    bool isTimeBetween(const char *startTime, const char *endTime)
+    char timeString[9];
+    strftime(timeString, 9, "%H:%M:%S", &timeinfo);
+    return String(timeString);
+}
+
+bool TimeSync::isTimeBetween(const char *startTime, const char *endTime)
+{
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo))
     {
-        struct tm timeinfo;
-        if (!getLocalTime(&timeinfo))
-        {
-            return false;
-        }
-
-        int currentMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
-
-        // Parse start time (format "HH:MM")
-        int startHour, startMin;
-        sscanf(startTime, "%d:%d", &startHour, &startMin);
-        int startMinutes = startHour * 60 + startMin;
-
-        // Parse end time
-        int endHour, endMin;
-        sscanf(endTime, "%d:%d", &endHour, &endMin);
-        int endMinutes = endHour * 60 + endMin;
-
-        if (endMinutes < startMinutes)
-        { // Handles overnight periods
-            return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
-        }
-
-        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+        Serial.println("⚠ Failed to get time for comparison");
+        timeInitialized = false; // Mark time as not synchronized
+        return false;
     }
 
-    // Get current time as minutes since midnight
-    int getCurrentMinutes()
-    {
-        int hour, minute;
-        getCurrentHourMinute(hour, minute);
-        return hour * 60 + minute;
+    int currentMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+
+    // Parse start time (format "HH:MM")
+    int startHour, startMin;
+    sscanf(startTime, "%d:%d", &startHour, &startMin);
+    int startMinutes = startHour * 60 + startMin;
+
+    // Parse end time
+    int endHour, endMin;
+    sscanf(endTime, "%d:%d", &endHour, &endMin);
+    int endMinutes = endHour * 60 + endMin;
+
+    // Debug time information
+    Serial.printf("Time check - Current: %02d:%02d (%d min), ",
+                  timeinfo.tm_hour, timeinfo.tm_min, currentMinutes);
+    Serial.printf("Start: %02d:%02d (%d min), ",
+                  startHour, startMin, startMinutes);
+    Serial.printf("End: %02d:%02d (%d min)\n",
+                  endHour, endMin, endMinutes);
+
+    if (endMinutes < startMinutes)
+    { // Handles overnight periods
+        bool isInRange = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+        Serial.printf("Overnight period check: %s\n", isInRange ? "true" : "false");
+        return isInRange;
     }
-};
+
+    bool isInRange = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    Serial.printf("Same-day period check: %s\n", isInRange ? "true" : "false");
+    return isInRange;
+}
+
+int TimeSync::getCurrentMinutes()
+{
+    int hour, minute;
+    getCurrentHourMinute(hour, minute);
+    return hour * 60 + minute;
+}
