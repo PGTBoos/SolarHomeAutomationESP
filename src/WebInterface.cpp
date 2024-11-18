@@ -7,14 +7,12 @@ void WebInterface::begin()
     // More detailed SPIFFS check
     Serial.println("\n=== SPIFFS Detailed Check ===");
     if (!SPIFFS.begin(true))
-    { // Added format on fail
-        Serial.println("SPIFFS Mount Failed - Attempting format");
-        if (!SPIFFS.begin(true))
-        {
-            Serial.println("SPIFFS Mount Still Failed");
-            return;
-        }
+    {
+        Serial.println("SPIFFS Mount Failed");
+        return;
     }
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    server.client().setNoDelay(true);
 
     // Print total and used space
     Serial.printf("Total space: %d bytes\n", SPIFFS.totalBytes());
@@ -129,10 +127,28 @@ void WebInterface::begin()
 void WebInterface::update()
 {
     server.handleClient();
+    yield();
+
+    unsigned long now = millis();
+    if (now - lastCheck >= CHECK_INTERVAL)
+    {
+        lastCheck = now;
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            Serial.println("WiFi connection lost - attempting reconnect");
+            WiFi.reconnect();
+        }
+    }
 }
 
 bool WebInterface::serveFile(const String &path)
 {
+    if (!buffer)
+    {
+        Serial.println("Buffer not allocated!");
+        return false;
+    }
+
     String contentType;
     if (path.endsWith(".html"))
         contentType = "text/html";
@@ -151,37 +167,86 @@ bool WebInterface::serveFile(const String &path)
     else
         contentType = "text/plain";
 
-    Serial.print("Attempting to serve: ");
-    Serial.println(path);
+    Serial.printf("Serving file: %s\n", path.c_str());
 
     File file = SPIFFS.open(path, "r");
     if (!file)
     {
-        Serial.printf("File not found: %s\n", path.c_str());
+        Serial.printf("Failed to open file: %s\n", path.c_str());
         return false;
     }
 
-    Serial.printf("Heap before: %d bytes\n", ESP.getFreeHeap());
     size_t fileSize = file.size();
-    Serial.printf("Heap after: %d bytes\n", ESP.getFreeHeap());
+    Serial.printf("File size: %u bytes\n", fileSize);
 
-    Serial.print("File size: ");
-    Serial.print(fileSize);
-    Serial.println(" bytes");
-
-    server.sendHeader("Connection", "keep-alive");
-    server.sendHeader("Keep-Alive", "timeout=10, max=100");
+    // Send headers first
     server.sendHeader("Content-Type", contentType);
+    server.sendHeader("Content-Length", String(fileSize));
+    server.sendHeader("Connection", "close");
     server.sendHeader("Cache-Control", "no-cache");
-    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.setContentLength(fileSize);
+    server.send(200, contentType, ""); // Send headers only
 
-    bool success = server.streamFile(file, contentType) == fileSize;
+    // Variables for progress tracking
+    size_t totalBytesSent = 0;
+    unsigned long startTime = millis();
+    int chunkCount = 0;
+
+    // Send file in chunks
+    size_t totalSent = 0;
+    size_t errorCount = 0;
+    const size_t MAX_ERRORS = 3;
+
+    // Send file in chunks with improved error handling
+    while (totalSent < fileSize && errorCount < MAX_ERRORS)
+    {
+        if (!server.client().connected())
+        {
+            Serial.println("Client disconnected during transfer");
+            file.close();
+            return false;
+        }
+
+        size_t bytesRead = file.read(buffer, min(BUFFER_SIZE, fileSize - totalSent));
+        if (bytesRead == 0)
+            break;
+
+        size_t bytesWritten = server.client().write(buffer, bytesRead);
+        if (bytesWritten != bytesRead)
+        {
+            Serial.printf("Write error: sent %u of %u bytes\n", bytesWritten, bytesRead);
+            errorCount++;
+            delay(50); // Wait a bit longer on error
+            continue;
+        }
+
+        totalSent += bytesWritten;
+
+        if (totalSent % (BUFFER_SIZE * 4) == 0)
+        {
+            Serial.printf("Progress: %u/%u bytes\n", totalSent, fileSize);
+        }
+
+        delay(1); // Minimal delay to prevent overwhelming
+        yield();
+    }
+
     file.close();
 
-    Serial.print("File served successfully: ");
-    Serial.println(success ? "yes" : "no");
+    if (totalSent != fileSize)
+    {
+        Serial.printf("Transfer incomplete: sent %u of %u bytes\n", totalSent, fileSize);
+        return false;
+    }
 
-    return success;
+    Serial.println("File served successfully");
+    return true;
+
+    // Log transfer statistics
+    unsigned long duration = millis() - startTime;
+    float speed = (totalBytesSent * 1000.0) / (duration * 1024.0); // KB/s
+    Serial.printf("Transfer complete: %u bytes in %lu ms (%.1f KB/s)\n",
+                  totalBytesSent, duration, speed);
 }
 
 void WebInterface::handleSwitch(int switchNumber)

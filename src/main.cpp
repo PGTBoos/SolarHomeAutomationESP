@@ -1,16 +1,38 @@
-// main.cpp
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <WiFi.h>
 
-// libs without headers..i'm lazy
 #include "DisplayManager.h"
 #include "EnvironmentSensor.h"
 #include "HomeP1Device.h"
 #include "HomeSocketDevice.h"
 #include "TimeSync.h"
 #include "WebInterface.h"
+
+// Timing control structure
+struct TimingControl
+{
+  unsigned long lastP1Update = 0;
+  unsigned long lastSocket1Update = 0;
+  unsigned long lastSocket2Update = 0;
+  unsigned long lastSocket3Update = 0;
+  unsigned long lastDisplayUpdate = 0;
+  unsigned long lastSensorUpdate = 0;
+  unsigned long lastWiFiCheck = 0;
+  unsigned long lastEnvSensorUpdate = 0;
+  unsigned long lastLightSensorUpdate = 0;
+
+  // Update intervals
+  const unsigned long P1_INTERVAL = 2000;           // 2 seconds
+  const unsigned long SOCKET_INTERVAL = 5000;       // 5 seconds
+  const unsigned long DISPLAY_INTERVAL = 1000;      // 1 second
+  const unsigned long SENSOR_INTERVAL = 2000;       // 2 seconds
+  const unsigned long TIME_SYNC_INTERVAL = 3600000; // 1 hour
+  const unsigned long WIFI_CHECK_INTERVAL = 30000;  // 30 seconds
+  const unsigned long ENV_SENSOR_INTERVAL = 5000;   // 5 seconds
+  const unsigned long LIGHT_SENSOR_INTERVAL = 5000; // 5 seconds
+} timing;
 
 // Configuration structure
 struct Config
@@ -261,9 +283,12 @@ void updateDisplay()
 
 void setup()
 {
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+
   Serial.begin(115200);
 
-  // Add these debug lines at the start
   if (!SPIFFS.begin(true))
   {
     Serial.println("SPIFFS Mount Failed");
@@ -290,16 +315,13 @@ void setup()
     Serial.println("SPIFFS mounted successfully");
   }
 
-  // Load configuration
   if (!loadConfiguration())
   {
     Serial.println("Using default configuration");
   }
 
-  // Initialize components with checks
-  Wire.begin(); // Start I2C bus first
+  Wire.begin();
 
-  // Try to initialize display
   if (display.begin())
   {
     Serial.println("Display initialized successfully");
@@ -307,10 +329,8 @@ void setup()
   else
   {
     Serial.println("Display not connected or initialization failed!");
-    // Program can continue without display
   }
 
-  // Try to initialize sensors
   if (sensors.begin())
   {
     Serial.println("Environmental sensors initialized successfully");
@@ -318,23 +338,18 @@ void setup()
   else
   {
     Serial.println("Environmental sensors not connected or initialization failed!");
-    // Program can continue without sensors
   }
 
   connectWiFi();
 
-  // Initialize network components after WiFi connection
-  // Initialize network components after WiFi connection
   if (WiFi.status() == WL_CONNECTED)
   {
-    // Debug prints for config values
     Serial.println("Config values:");
     Serial.println("P1 IP: " + config.p1_ip);
     Serial.println("Socket 1: " + config.socket_1);
     Serial.println("Socket 2: " + config.socket_2);
     Serial.println("Socket 3: " + config.socket_3);
 
-    // Only initialize devices with valid IPs
     if (config.p1_ip != "" && config.p1_ip != "0" && config.p1_ip != "null")
     {
       p1Meter = new HomeP1Device(config.p1_ip.c_str());
@@ -363,61 +378,155 @@ void setup()
     webServer.begin();
   }
 
-  // Initial state
+  // Initialize timing and state
+  unsigned long startTime = millis();
   for (int i = 0; i < 3; i++)
   {
-    lastStateChangeTime[i] = millis();
+    lastStateChangeTime[i] = startTime;
     switchForceOff[i] = false;
   }
 }
 
 void reconnectWiFi()
 {
-  static unsigned long lastAttempt = 0;
-  const unsigned long RETRY_INTERVAL = 30000; // 30 seconds
+  unsigned long currentMillis = millis();
 
   if (WiFi.status() != WL_CONNECTED &&
-      (millis() - lastAttempt > RETRY_INTERVAL || lastAttempt == 0))
+      (currentMillis - timing.lastWiFiCheck >= timing.WIFI_CHECK_INTERVAL || timing.lastWiFiCheck == 0))
   {
 
     Serial.println("Reconnecting to WiFi...");
     WiFi.disconnect();
     WiFi.begin(config.wifi_ssid.c_str(), config.wifi_password.c_str());
-    lastAttempt = millis();
+    timing.lastWiFiCheck = currentMillis;
   }
 }
 
 void loop()
 {
+  unsigned long currentMillis = millis();
+
+  // WiFi check first
   reconnectWiFi();
   if (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     return;
   }
-  // Update sensor readings
-  sensors.update();
 
-  // Reminder the arrow (->) is equivalent to:  float power = (*p1Meter).getCurrentExport(); as by pointer reference (multiple socket devices).
-  if (p1Meter)
-    p1Meter->update();
-  if (socket1)
-    socket1->update();
-  if (socket2)
-    socket2->update();
-  if (socket3)
-    socket3->update();
+  // Use static counter to sequence ALL operations
+  static uint8_t operationOrder = 0;
 
-  // Update automation logic
-  updateSwitch1Logic();
-  updateSwitch2Logic();
-  updateSwitch3Logic();
-  checkMaxOnTime();
+  switch (operationOrder)
+  {
+  case 0: // Environmental sensor (I2C) - Temperature/Humidity
+    if (currentMillis - timing.lastEnvSensorUpdate >= timing.ENV_SENSOR_INTERVAL)
+    {
+      sensors.update(); // Assuming this method exists, if not we use sensors.update()
+      timing.lastEnvSensorUpdate = currentMillis;
+      operationOrder = 1;
+      yield();
+      delay(1);
+    }
+    break;
 
-  // Update display and web interface
-  updateDisplay();
-  webServer.update(); // Changed from update() to handleClient()
+  case 1: // Light sensor (I2C)
+    if (currentMillis - timing.lastLightSensorUpdate >= timing.LIGHT_SENSOR_INTERVAL)
+    {
+      sensors.update(); // Assuming this method exists, if not we use sensors.update()
+      timing.lastLightSensorUpdate = currentMillis;
+      operationOrder = 2;
+      yield();
+      delay(1);
+    }
+    break;
 
-  // Small delay to prevent excessive CPU usage
-  delay(100);
+  case 2: // Display update (I2C)
+    if (currentMillis - timing.lastDisplayUpdate >= timing.DISPLAY_INTERVAL)
+    {
+      updateDisplay();
+      timing.lastDisplayUpdate = currentMillis;
+      operationOrder = 3;
+      yield();
+      delay(1);
+    }
+    break;
+
+  case 3: // P1 meter (Network)
+    if (p1Meter && (currentMillis - timing.lastP1Update >= timing.P1_INTERVAL))
+    {
+      p1Meter->update();
+      timing.lastP1Update = currentMillis;
+      operationOrder = 4;
+      yield();
+      delay(5);
+    }
+    else
+    {
+      operationOrder = 4;
+    }
+    break;
+
+  case 4: // Socket 1 (Network)
+    if (socket1 && (currentMillis - timing.lastSocket1Update >= timing.SOCKET_INTERVAL))
+    {
+      socket1->update();
+      timing.lastSocket1Update = currentMillis;
+      if (p1Meter)
+      {
+        updateSwitch1Logic();
+      }
+      operationOrder = 5;
+      yield();
+      delay(5);
+    }
+    else
+    {
+      operationOrder = 5;
+    }
+    break;
+
+  case 5: // Socket 2 (Network)
+    if (socket2 && (currentMillis - timing.lastSocket2Update >= timing.SOCKET_INTERVAL))
+    {
+      socket2->update();
+      timing.lastSocket2Update = currentMillis;
+      updateSwitch2Logic();
+      operationOrder = 6;
+      yield();
+      delay(5);
+    }
+    else
+    {
+      operationOrder = 6;
+    }
+    break;
+
+  case 6: // Socket 3 (Network)
+    if (socket3 && (currentMillis - timing.lastSocket3Update >= timing.SOCKET_INTERVAL))
+    {
+      socket3->update();
+      timing.lastSocket3Update = currentMillis;
+      updateSwitch3Logic();
+      operationOrder = 7;
+      yield();
+      delay(5);
+    }
+    else
+    {
+      operationOrder = 7;
+    }
+    break;
+
+  case 7: // Max on time check (no I2C or network)
+    checkMaxOnTime();
+    operationOrder = 8;
+    break;
+
+  case 8: // Web server (Network)
+    webServer.update();
+    operationOrder = 0; // Back to start
+    yield();
+    break;
+  }
 }
