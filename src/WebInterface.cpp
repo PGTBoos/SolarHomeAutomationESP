@@ -3,7 +3,6 @@
 
 void WebInterface::begin()
 {
-
     // More detailed SPIFFS check
     Serial.println("\n=== SPIFFS Detailed Check ===");
     if (!SPIFFS.begin(true))
@@ -73,7 +72,7 @@ void WebInterface::begin()
         Serial.println("Handling /data request");
         server.sendHeader("Content-Type", "application/json");
         server.sendHeader("Access-Control-Allow-Origin", "*");
-        
+
         StaticJsonDocument<1024> doc;
         doc["import_power"] = 1240;
         doc["export_power"] = 0;
@@ -109,11 +108,11 @@ void WebInterface::begin()
         Serial.print("Request not found: ");
         Serial.println(server.uri());
         Serial.print("Method: ");
-        Serial.println(server.method() == HTTP_GET ? "GET" : 
+        Serial.println(server.method() == HTTP_GET ? "GET" :
                       server.method() == HTTP_POST ? "POST" : "OTHER");
         Serial.print("Client IP: ");
         Serial.println(server.client().remoteIP());
-        
+
         if (!serveFile(server.uri())) {
             Serial.println("File not found, sending 404");
             server.send(404, "text/plain", "Not found");
@@ -192,13 +191,8 @@ bool WebInterface::serveFile(const String &path)
     unsigned long startTime = millis();
     int chunkCount = 0;
 
-    // Send file in chunks
-    size_t totalSent = 0;
-    size_t errorCount = 0;
-    const size_t MAX_ERRORS = 3;
-
     // Send file in chunks with improved error handling
-    while (totalSent < fileSize && errorCount < MAX_ERRORS)
+    while (totalBytesSent < fileSize)
     {
         if (!server.client().connected())
         {
@@ -207,7 +201,7 @@ bool WebInterface::serveFile(const String &path)
             return false;
         }
 
-        size_t bytesRead = file.read(buffer, min(BUFFER_SIZE, fileSize - totalSent));
+        size_t bytesRead = file.read(buffer, min(BUFFER_SIZE, fileSize - totalBytesSent));
         if (bytesRead == 0)
             break;
 
@@ -215,16 +209,15 @@ bool WebInterface::serveFile(const String &path)
         if (bytesWritten != bytesRead)
         {
             Serial.printf("Write error: sent %u of %u bytes\n", bytesWritten, bytesRead);
-            errorCount++;
             delay(50); // Wait a bit longer on error
             continue;
         }
 
-        totalSent += bytesWritten;
+        totalBytesSent += bytesWritten;
 
-        if (totalSent % (BUFFER_SIZE * 4) == 0)
+        if (totalBytesSent % (BUFFER_SIZE * 4) == 0)
         {
-            Serial.printf("Progress: %u/%u bytes\n", totalSent, fileSize);
+            Serial.printf("Progress: %u/%u bytes\n", totalBytesSent, fileSize);
         }
 
         delay(1); // Minimal delay to prevent overwhelming
@@ -233,9 +226,9 @@ bool WebInterface::serveFile(const String &path)
 
     file.close();
 
-    if (totalSent != fileSize)
+    if (totalBytesSent != fileSize)
     {
-        Serial.printf("Transfer incomplete: sent %u of %u bytes\n", totalSent, fileSize);
+        Serial.printf("Transfer incomplete: sent %u of %u bytes\n", totalBytesSent, fileSize);
         return false;
     }
 

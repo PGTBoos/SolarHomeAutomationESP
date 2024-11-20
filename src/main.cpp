@@ -1,56 +1,8 @@
-#include <Arduino.h>
-#include <ArduinoJson.h>
-#include <SPIFFS.h>
-#include <WiFi.h>
+#include "main.h"
 
-#include "DisplayManager.h"
-#include "EnvironmentSensor.h"
-#include "HomeP1Device.h"
-#include "HomeSocketDevice.h"
-#include "TimeSync.h"
-#include "WebInterface.h"
-
-// Timing control structure
-struct TimingControl
-{
-  unsigned long lastP1Update = 0;
-  unsigned long lastSocket1Update = 0;
-  unsigned long lastSocket2Update = 0;
-  unsigned long lastSocket3Update = 0;
-  unsigned long lastDisplayUpdate = 0;
-  unsigned long lastSensorUpdate = 0;
-  unsigned long lastWiFiCheck = 0;
-  unsigned long lastEnvSensorUpdate = 0;
-  unsigned long lastLightSensorUpdate = 0;
-
-  // Update intervals
-  const unsigned long P1_INTERVAL = 2000;           // 2 seconds
-  const unsigned long SOCKET_INTERVAL = 5000;       // 5 seconds
-  const unsigned long DISPLAY_INTERVAL = 1000;      // 1 second
-  const unsigned long SENSOR_INTERVAL = 2000;       // 2 seconds
-  const unsigned long TIME_SYNC_INTERVAL = 3600000; // 1 hour
-  const unsigned long WIFI_CHECK_INTERVAL = 30000;  // 30 seconds
-  const unsigned long ENV_SENSOR_INTERVAL = 5000;   // 5 seconds
-  const unsigned long LIGHT_SENSOR_INTERVAL = 5000; // 5 seconds
-} timing;
-
-// Configuration structure
-struct Config
-{
-  String wifi_ssid;
-  String wifi_password;
-  String p1_ip;
-  String socket_1;
-  String socket_2;
-  String socket_3;
-  float power_on_threshold;
-  float power_off_threshold;
-  unsigned long min_on_time;
-  unsigned long min_off_time;
-  unsigned long max_on_time;
-} config;
-
-// Component instances
+// Global variable definitions
+TimingControl timing;
+Config config;
 DisplayManager display;
 EnvironmentSensors sensors;
 HomeP1Device *p1Meter = nullptr;
@@ -59,10 +11,9 @@ HomeSocketDevice *socket2 = nullptr;
 HomeSocketDevice *socket3 = nullptr;
 TimeSync timeSync;
 WebInterface webServer;
-
-// Timing variables
 unsigned long lastStateChangeTime[3] = {0, 0, 0};
 bool switchForceOff[3] = {false, false, false};
+unsigned long lastTimeDisplay = 0;
 
 bool loadConfiguration()
 {
@@ -266,7 +217,14 @@ void updateDisplay()
 {
   if (!p1Meter)
     return;
-
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastTimeDisplay >= 60000)
+  { // 60 seconds
+    int hour, minute;
+    timeSync.getCurrentHourMinute(hour, minute);
+    Serial.printf("Current time: %02d:%02d\n", hour, minute);
+    lastTimeDisplay = currentMillis;
+  }
   display.updateDisplay(
       p1Meter->getCurrentImport(),
       p1Meter->getCurrentExport(),
@@ -394,7 +352,6 @@ void reconnectWiFi()
   if (WiFi.status() != WL_CONNECTED &&
       (currentMillis - timing.lastWiFiCheck >= timing.WIFI_CHECK_INTERVAL || timing.lastWiFiCheck == 0))
   {
-
     Serial.println("Reconnecting to WiFi...");
     WiFi.disconnect();
     WiFi.begin(config.wifi_ssid.c_str(), config.wifi_password.c_str());
@@ -459,7 +416,7 @@ void loop()
       timing.lastP1Update = currentMillis;
       operationOrder = 4;
       yield();
-      delay(5);
+      delay(50);
     }
     else
     {
@@ -478,7 +435,7 @@ void loop()
       }
       operationOrder = 5;
       yield();
-      delay(5);
+      delay(50);
     }
     else
     {
@@ -494,7 +451,7 @@ void loop()
       updateSwitch2Logic();
       operationOrder = 6;
       yield();
-      delay(5);
+      delay(50);
     }
     else
     {
@@ -510,7 +467,7 @@ void loop()
       updateSwitch3Logic();
       operationOrder = 7;
       yield();
-      delay(5);
+      delay(50);
     }
     else
     {

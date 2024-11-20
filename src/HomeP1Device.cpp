@@ -8,6 +8,9 @@ HomeP1Device::HomeP1Device(const char *ip) : baseUrl("http://" + String(ip)),
                                              lastReadSuccess(false)
 {
 }
+#ifndef max
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 
 void HomeP1Device::update()
 {
@@ -26,22 +29,15 @@ bool HomeP1Device::getPowerData(float &importPower, float &exportPower)
     if (httpCode == HTTP_CODE_OK)
     {
         String payload = http.getString();
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<2048> doc;
         DeserializationError error = deserializeJson(doc, payload);
 
         if (!error)
         {
             float power = doc["active_power_w"].as<float>();
-            if (power < 0)
-            {
-                importPower = 0;
-                exportPower = -power;
-            }
-            else
-            {
-                importPower = power;
-                exportPower = 0;
-            }
+            Serial.printf("Received P1 power data: %.2f W\n", power);
+            importPower = max(power, 0);
+            exportPower = max(-power, 0);
             http.end();
             return true;
         }
