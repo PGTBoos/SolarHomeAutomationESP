@@ -38,6 +38,7 @@ basic wifi comm done, testing each module,
 
 -----
 # Quick reference of the libraries I wrote.
+**CURRENTLY THERE ARE LOT OF CHANGES HAPPENING HERE THIS MAY NOT BE UP TO DATE**
 
 ## DisplayManager Quick Reference
 
