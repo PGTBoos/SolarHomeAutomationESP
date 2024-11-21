@@ -41,7 +41,6 @@ public:
         int minute;    // 0-59
     };
     TimeData getTime(); // One function to get everything
-    bool isTimeBetween(const char *startTime, const char *endTime);
 };
 
 #endif

@@ -13,6 +13,7 @@
 #include "WebInterface.h"
 #include "NetworkCheck.h"
 
+extern NetworkCheck *phoneCheck;
 // Timing control structure
 struct TimingControl
 {
@@ -78,7 +79,6 @@ extern HomeP1Device *p1Meter;
 extern HomeSocketDevice *socket1;
 extern HomeSocketDevice *socket2;
 extern HomeSocketDevice *socket3;
-extern NetworkCheck phoneCheck;
 extern TimeSync timeSync;
 extern WebInterface webServer;
 extern unsigned long lastStateChangeTime[3];
