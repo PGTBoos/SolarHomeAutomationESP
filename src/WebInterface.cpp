@@ -74,8 +74,8 @@ void WebInterface::begin()
         server.sendHeader("Access-Control-Allow-Origin", "*");
 
         StaticJsonDocument<1024> doc;
-        doc["import_power"] = 1240;
-        doc["export_power"] = 0;
+        doc["import_power"] = p1Device->getCurrentImport(); // Real value
+        doc["export_power"] = p1Device->getCurrentExport(); // Real value
         doc["temperature"] = 21.5;
         doc["humidity"] = 45;
         doc["light"] = 320;

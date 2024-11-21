@@ -6,6 +6,7 @@
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
+#include "HomeP1Device.h"
 
 using WebServer = ::WebServer;
 
@@ -24,8 +25,11 @@ private:
     bool serveFile(const String &path);
     void handleSwitch(int switchNumber);
 
+    HomeP1Device *p1Device;
+
 public:
     // Constructor with port 8080
+    WebInterface(HomeP1Device *p1) : p1Device(p1) {}
     WebInterface() : server(8080), buffer(nullptr)
     {
         buffer = new uint8_t[BUFFER_SIZE];

@@ -11,6 +11,7 @@
 #include "HomeSocketDevice.h"
 #include "TimeSync.h"
 #include "WebInterface.h"
+#include "NetworkCheck.h"
 
 // Timing control structure
 struct TimingControl
@@ -24,6 +25,7 @@ struct TimingControl
     unsigned long lastWiFiCheck;
     unsigned long lastEnvSensorUpdate;
     unsigned long lastLightSensorUpdate;
+    unsigned long lastPhoneCheck;
 
     // Update intervals
     const unsigned long P1_INTERVAL = 2000;           // 2 seconds
@@ -34,6 +36,7 @@ struct TimingControl
     const unsigned long WIFI_CHECK_INTERVAL = 30000;  // 30 seconds
     const unsigned long ENV_SENSOR_INTERVAL = 5000;   // 5 seconds
     const unsigned long LIGHT_SENSOR_INTERVAL = 5000; // 5 seconds
+    const unsigned long PHONE_CHECK_INTERVAL = 60000; // 1 minute
 };
 
 // Configuration structure
@@ -45,6 +48,7 @@ struct Config
     String socket_1;
     String socket_2;
     String socket_3;
+    String phone_ip;
     float power_on_threshold;
     float power_off_threshold;
     unsigned long min_on_time;
@@ -74,6 +78,7 @@ extern HomeP1Device *p1Meter;
 extern HomeSocketDevice *socket1;
 extern HomeSocketDevice *socket2;
 extern HomeSocketDevice *socket3;
+extern NetworkCheck phoneCheck;
 extern TimeSync timeSync;
 extern WebInterface webServer;
 extern unsigned long lastStateChangeTime[3];

@@ -11,6 +11,7 @@ HomeSocketDevice *socket2 = nullptr;
 HomeSocketDevice *socket3 = nullptr;
 TimeSync timeSync;
 WebInterface webServer;
+NetworkCheck *phoneCheck = nullptr;
 unsigned long lastStateChangeTime[3] = {0, 0, 0};
 bool switchForceOff[3] = {false, false, false};
 unsigned long lastTimeDisplay = 0;
@@ -52,6 +53,7 @@ bool loadConfiguration()
   config.min_on_time = doc["min_on_time"] | 300UL;
   config.min_off_time = doc["min_off_time"] | 300UL;
   config.max_on_time = doc["max_on_time"] | 1800UL;
+  // config.phone_ip = doc["phone_ip"].as<String>();
 
   return true;
 }
@@ -247,6 +249,12 @@ void setup()
 
   Serial.begin(115200);
 
+  if (config.phone_ip != "" && config.phone_ip != "0" && config.phone_ip != "null")
+  {
+    phoneCheck = new NetworkCheck(config.phone_ip.c_str());
+    Serial.println("Phone check initialized at: " + config.phone_ip);
+  }
+
   if (!SPIFFS.begin(true))
   {
     Serial.println("SPIFFS Mount Failed");
@@ -307,6 +315,7 @@ void setup()
     Serial.println("Socket 1: " + config.socket_1);
     Serial.println("Socket 2: " + config.socket_2);
     Serial.println("Socket 3: " + config.socket_3);
+    Serial.println("Phone IP:" + config.phone_ip);
 
     if (config.p1_ip != "" && config.p1_ip != "0" && config.p1_ip != "null")
     {
@@ -482,8 +491,40 @@ void loop()
 
   case 8: // Web server (Network)
     webServer.update();
-    operationOrder = 0; // Back to start
+    operationOrder = 9; // Back to start
     yield();
+    break;
+
+  case 9: // Phone presence check
+    if (phoneCheck && (currentMillis - timing.lastPhoneCheck >= timing.PHONE_CHECK_INTERVAL))
+    {
+      if (phoneCheck->isDevicePresent())
+      {
+        Serial.println("Phone is detected");
+        // Add your logic for when phone is present
+      }
+      else
+      {
+        Serial.println("Phone is not detected");
+        // Add your logic for when phone is absent
+      }
+      timing.lastPhoneCheck = currentMillis;
+      operationOrder = 0; // Go back to start
+      yield();
+      delay(50); // Give some time between network operations
+    }
+    else
+    {
+      operationOrder = 0;
+    }
     break;
   }
 }
+
+//  TimeSync::TimeData time = timeSync.getTime();
+//  if (time.dayOfWeek == 7)
+//    { // Sunday
+//    if (time.dayOfWeek >= 6)
+//    { // Weekend (Sat-Sun)
+//      if (time.dayOfWeek <= 5)
+//      { // Weekday (Mon-Fri)

@@ -137,3 +137,25 @@ int TimeSync::getCurrentMinutes()
     getCurrentHourMinute(hour, minute);
     return hour * 60 + minute;
 }
+
+TimeSync::TimeData TimeSync::getTime()
+{
+    TimeData t = {0};
+    struct tm timeinfo;
+
+    if (getLocalTime(&timeinfo))
+    {
+        t.year = timeinfo.tm_year + 1900;
+        t.month = timeinfo.tm_mon + 1;
+        // Convert to 1-7 where Monday=1 and Sunday=7
+        t.dayOfWeek = timeinfo.tm_wday == 0 ? 7 : timeinfo.tm_wday;
+        t.hour = timeinfo.tm_hour;
+        t.minute = timeinfo.tm_min;
+        t.weekNum = ((timeinfo.tm_yday + 7 - timeinfo.tm_wday) / 7) + 1;
+    }
+    else
+    {
+        Serial.println("Failed to get time");
+    }
+    return t;
+}
