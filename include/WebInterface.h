@@ -13,7 +13,6 @@ using WebServer = ::WebServer;
 class WebInterface
 {
 private:
-    // Cache structure definition
     struct CachedData
     {
         float import_power = 0;
@@ -25,22 +24,45 @@ private:
         unsigned long socket_durations[3] = {0, 0, 0};
     };
 
+    struct FileCache
+    {
+        String path;
+        uint8_t *data = nullptr;
+        size_t size = 0;
+    };
+
     WebServer server;
     unsigned long lastCheck = 0;
     static const size_t BUFFER_SIZE = 1024;
     static const int CHUNK_DELAY = 5;
     static const unsigned long CHECK_INTERVAL = 30000;
     static const unsigned long ERROR_COOLDOWN = 5000;
-    uint8_t *buffer;
-    CachedData cached; // Instance of the cache
+    static const int MAX_CACHED_FILES = 2;
 
+    uint8_t *buffer;
+    CachedData cached;
+    FileCache cachedFiles[MAX_CACHED_FILES];
+
+    void updateCache();
+    String getContentType(const String &path);
+    bool serveFromCache(const String &path);
+    void cacheFile(const String &path, File &file);
     bool serveFile(const String &path);
     void handleSwitch(int switchNumber);
-    void updateCache(); // Declaration of the cache update function
 
 public:
     WebInterface() : server(8080), buffer(new uint8_t[BUFFER_SIZE]) {}
     void begin();
     void update();
-    ~WebInterface() { delete[] buffer; }
+    ~WebInterface()
+    {
+        delete[] buffer;
+        for (int i = 0; i < MAX_CACHED_FILES; i++)
+        {
+            if (cachedFiles[i].data != nullptr)
+            {
+                delete[] cachedFiles[i].data;
+            }
+        }
+    }
 };
