@@ -1,55 +1,46 @@
-#ifndef WEB_SERVER_H
-#define WEB_SERVER_H
+// WebInterface.h
+#pragma once
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
-#include "HomeP1Device.h"
+#include "GlobalVars.h"
 
 using WebServer = ::WebServer;
 
 class WebInterface
 {
 private:
+    // Cache structure definition
+    struct CachedData
+    {
+        float import_power = 0;
+        float export_power = 0;
+        float temperature = 0;
+        float humidity = 0;
+        float light = 0;
+        bool socket_states[3] = {false, false, false};
+        unsigned long socket_durations[3] = {0, 0, 0};
+    };
+
     WebServer server;
     unsigned long lastCheck = 0;
-    static const size_t BUFFER_SIZE = 1024;            // 1KB buffer
-    static const int CHUNK_DELAY = 5;                  // 5ms delay between chunks
-    static const unsigned long CHECK_INTERVAL = 30000; // 30 seconds
-    static const unsigned long ERROR_COOLDOWN = 5000;  // 5 second cooldown
-
+    static const size_t BUFFER_SIZE = 1024;
+    static const int CHUNK_DELAY = 5;
+    static const unsigned long CHECK_INTERVAL = 30000;
+    static const unsigned long ERROR_COOLDOWN = 5000;
     uint8_t *buffer;
+    CachedData cached; // Instance of the cache
 
     bool serveFile(const String &path);
     void handleSwitch(int switchNumber);
-
-    HomeP1Device *p1Device;
+    void updateCache(); // Declaration of the cache update function
 
 public:
-    // Constructor with port 8080
-    WebInterface(HomeP1Device *p1) : p1Device(p1) {}
-    WebInterface() : server(8080), buffer(nullptr)
-    {
-        buffer = new uint8_t[BUFFER_SIZE];
-        if (!buffer)
-        {
-            Serial.println("Failed to allocate buffer!");
-        }
-    }
-
-    // Destructor
-    ~WebInterface()
-    {
-        if (buffer)
-        {
-            delete[] buffer;
-        }
-    }
-
+    WebInterface() : server(8080), buffer(new uint8_t[BUFFER_SIZE]) {}
     void begin();
     void update();
+    ~WebInterface() { delete[] buffer; }
 };
-
-#endif
