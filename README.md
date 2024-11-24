@@ -41,7 +41,7 @@ Or mMaybe do something with my **washing machines..** but not sure i have no doc
 # hardware list
 
 > averaged prices, homewizard is a bit pricy perhaps, but the ease of their wifi i licked it.
->
+> 
 > They also had a nice android app to see live data so not a bad deal.
 
 | Item | Price (€) |
