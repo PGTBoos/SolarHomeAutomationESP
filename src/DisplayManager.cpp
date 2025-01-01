@@ -1,24 +1,29 @@
 // DisplayManager.cpp
 #include "DisplayManager.h"
 
-// Constructor implementation
-DisplayManager::DisplayManager() : display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET) {}
-
 bool DisplayManager::begin()
 {
-    // Initialize display
-    displayFound = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-    if (!displayFound)
+    Serial.println("\nInitializing OLED display...");
+
+    if (!display.begin())
     {
-        Serial.println("Could not find SSD1306 OLED display!");
+        Serial.println("SH1106 allocation failed");
         return false;
     }
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.println("Initializing...");
-    display.display();
+    // Setup display parameters
+    display.setFont(u8g2_font_6x10_tr); // Choose a suitable font
+    display.setDrawColor(1);            // White on black
+    display.setFontPosTop();            // Upper left corner is reference
+    display.clearBuffer();
+
+    // Draw initial test pattern
+    display.drawStr(0, 0, "Display Ready");
+    display.drawFrame(0, 0, display.getWidth(), display.getHeight());
+    display.sendBuffer();
+
+    displayFound = true;
+    Serial.println("Display initialized successfully!");
     return true;
 }
 
@@ -27,21 +32,20 @@ void DisplayManager::showPowerPage(float importPower, float exportPower)
     if (!displayFound)
         return;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Power Monitor");
-    display.println();
+    display.clearBuffer();
+    display.drawStr(0, 0, "Power Monitor");
 
+    display.setCursor(0, 20);
     display.print("Import: ");
     display.print(importPower, 1);
-    display.println("W");
+    display.print("W");
 
+    display.setCursor(0, 35);
     display.print("Export: ");
     display.print(exportPower, 1);
-    display.println("W");
+    display.print("W");
 
-    display.display();
+    display.sendBuffer();
 }
 
 void DisplayManager::showEnvironmentPage(float temp, float humidity, float light)
@@ -49,25 +53,25 @@ void DisplayManager::showEnvironmentPage(float temp, float humidity, float light
     if (!displayFound)
         return;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Environment");
-    display.println();
+    display.clearBuffer();
+    display.drawStr(0, 0, "Environment");
 
+    display.setCursor(0, 20);
     display.print("Temp: ");
     display.print(temp, 1);
-    display.println("C");
+    display.print("C");
 
+    display.setCursor(0, 35);
     display.print("Humidity: ");
     display.print(humidity, 0);
-    display.println("%");
+    display.print("%");
 
+    display.setCursor(0, 50);
     display.print("Light: ");
     display.print(light, 0);
-    display.println(" lux");
+    display.print(" lux");
 
-    display.display();
+    display.sendBuffer();
 }
 
 void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
@@ -76,22 +80,22 @@ void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
     if (!displayFound)
         return;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Switches");
-    display.println();
+    display.clearBuffer();
+    display.drawStr(0, 0, "Switches");
 
+    display.setCursor(0, 20);
     display.print("SW1: ");
-    display.println(switch1 ? "ON " + sw1Time : "OFF");
+    display.print(switch1 ? "ON " + sw1Time : "OFF");
 
+    display.setCursor(0, 35);
     display.print("SW2: ");
-    display.println(switch2 ? "ON " + sw2Time : "OFF");
+    display.print(switch2 ? "ON " + sw2Time : "OFF");
 
+    display.setCursor(0, 50);
     display.print("SW3: ");
-    display.println(switch3 ? "ON " + sw3Time : "OFF");
+    display.print(switch3 ? "ON " + sw3Time : "OFF");
 
-    display.display();
+    display.sendBuffer();
 }
 
 void DisplayManager::updateDisplay(float importPower, float exportPower,

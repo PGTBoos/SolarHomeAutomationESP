@@ -22,6 +22,13 @@ bool EnvironmentSensors::begin()
     {
         Serial.println("Could not find BH1750 sensor!");
     }
+    else
+    {
+        lightMeter.setMTreg(64);     // Set measurement time to 400ms
+        lightMeter.readLightLevel(); // Read once to start measurement
+
+        Serial.println("BH1750 sensor found!");
+    }
 
     return bmeFound || lightMeterFound; // Return true if at least one sensor works
 }

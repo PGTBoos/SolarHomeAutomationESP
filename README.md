@@ -12,21 +12,21 @@ Also turns of if not enough power.
 
 Later i got some more ideas about,
 
-*   I wanted to see it on a website my current solar production. **done !**
-*   I wanted reasonable good loggin through serial **done !.**
-*   Sinks with an NTP time server  **done !**
-*   Use a file cache for faster serving web server **done !**
-*   Restart the webserver to better handle single session using a watchdog **done.**
-*   Get a stable webserver on ESP32 (this was quite a lot of work) **done!!**
+* I wanted to see it on a website my current solar production. **done !**
+* I wanted reasonable good loggin through serial **done !.**
+* Sinks with an NTP time server  **done !**
+* Use a file cache for faster serving web server **done !**
+* Restart the webserver to better handle single session using a watchdog **done.**
+* Get a stable webserver on ESP32 (this was quite a lot of work) **done!!**
 
 **Working currently on:**  
 A simple rules engine so that with simple logic devices can be coded to turn on or of (and still achieve complex task).  
 A bit of a inbetween language.  ea where function can return 0 or 1 so one can do:  
 This logic  is currently in _development_ and can change..
 
-*   `TurnOn(device) = TunrUntil(memslot-1,solarcelabove(50),solarCelBelow(40) * isAfter(18:00) * isBefore (23:00)`
-*   `TurnOn(device) = PingNotFound(ipAddr) * isAfter(17:00) * isweekDay(1110011h)`
-*   `TurnOff(device) =  Or ( PingNotFound(ipAddr)  , after(23:00)  )`
+* `TurnOn(device) = TunrUntil(memslot-1,solarcelabove(50),solarCelBelow(40) * isAfter(18:00) * isBefore (23:00)`
+* `TurnOn(device) = PingNotFound(ipAddr) * isAfter(17:00) * isweekDay(1110011h)`
+* `TurnOff(device) =  Or ( PingNotFound(ipAddr)  , after(23:00)  )`
 
 **Still planned**  (soon, next weeks)  
 Adding extra electronics (bought and arrived) with some more sensors (web page allready contains them)  
@@ -63,7 +63,7 @@ but not sure i have no documentation of api's ... (well not yet).
 # hardware list
 
 > averaged prices, homewizard is a bit pricy perhaps, but the ease of their wifi i licked it.
-> 
+>
 > They also had a nice android app to see live data so not a bad deal.
 
 | Item | Price (€) |

@@ -1,20 +1,13 @@
-// DisplayManager.h
 #ifndef DISPLAY_MANAGER_H
 #define DISPLAY_MANAGER_H
 
+#include <U8g2lib.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-#define SCREEN_ADDRESS 0x3C
 
 class DisplayManager
 {
 private:
-    Adafruit_SSD1306 display;
+    U8G2_SH1106_128X64_NONAME_F_HW_I2C display;
     bool displayFound = false;
     int currentPage = 0;
     unsigned long lastPageChange = 0;
@@ -26,7 +19,7 @@ private:
                           const String &sw1Time, const String &sw2Time, const String &sw3Time);
 
 public:
-    DisplayManager();
+    DisplayManager() : display(U8G2_R0, /* reset= */ U8X8_PIN_NONE) {}
     bool begin();
     void updateDisplay(float importPower, float exportPower,
                        float temp, float humidity, float light,

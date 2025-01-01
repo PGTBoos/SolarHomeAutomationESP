@@ -1171,7 +1171,15 @@ bool NetworkCheck::pingDevice()
 // SimpleRuleEngine.cpp
 #include "RulesEngine.h"
 
-SimpleRuleEngine::SimpleRuleEngine() : current_lux(0) {}
+HomeSocketDevice *SimpleRuleEngine::getSocket(int socket_number)
+{
+    if (socket_number < 1 || socket_number > MAX_SOCKETS)
+    {
+        Serial.printf("Invalid socket number: %d\n", socket_number);
+        return nullptr;
+    }
+    return sockets[socket_number - 1];
+}
 
 int SimpleRuleEngine::TurnUntil(int memoryIndex, int turnOnCondition, int turnOffCondition)
 {
@@ -1212,6 +1220,7 @@ int SimpleRuleEngine::lightSensorBelow(int lux_value)
     Serial.printf("Light < %d lux: %s\n", lux_value, result ? "true" : "false");
     return result;
 }
+
 int SimpleRuleEngine::after(const char *timeStr)
 {
     int hour, minute;
@@ -1244,51 +1253,182 @@ int SimpleRuleEngine::before(const char *timeStr)
     return result;
 }
 
-int SimpleRuleEngine::isOn(int socket_number)
+int SimpleRuleEngine::OR(int func1, int func2)
 {
-    HomeSocketDevice *socket = nullptr;
-    switch (socket_number)
+    int result = ((func1 > 0) || (func2 > 0)) ? 1 : 0;
+    Serial.printf("OR operation: %d OR %d = %d\n", func1, func2, result);
+    return result;
+}
+
+int SimpleRuleEngine::AND(int func1, int func2)
+{
+    int result = ((func1 > 0) && (func2 > 0)) ? 1 : 0;
+    Serial.printf("AND operation: %d AND %d = %d\n", func1, func2, result);
+    return result;
+}
+
+int SimpleRuleEngine::NOT(int func)
+{
+    int result = (func <= 0) ? 1 : 0;
+    Serial.printf("NOT operation: NOT %d = %d\n", func, result);
+    return result;
+}
+
+int SimpleRuleEngine::turnOnInbetween(const char *startTime, const char *endTime)
+{
+    int currentHour, currentMinute;
+    timeSync.getCurrentHourMinute(currentHour, currentMinute);
+    int currentMinutes = currentHour * 60 + currentMinute;
+
+    // Parse start time
+    int startHours, startMinutes;
+    sscanf(startTime, "%d:%d", &startHours, &startMinutes);
+    int startTotalMinutes = startHours * 60 + startMinutes;
+
+    // Parse end time
+    int endHours, endMinutes;
+    sscanf(endTime, "%d:%d", &endHours, &endMinutes);
+    int endTotalMinutes = endHours * 60 + endMinutes;
+
+    int result;
+    // Handle cases where the period crosses midnight
+    if (startTotalMinutes <= endTotalMinutes)
     {
-    case 1:
-        socket = socket1;
-        break;
-    case 2:
-        socket = socket2;
-        break;
-    case 3:
-        socket = socket3;
-        break;
+        // Normal case (e.g., 21:00 to 23:00)
+        result = (currentMinutes >= startTotalMinutes && currentMinutes < endTotalMinutes) ? 1 : 0;
     }
-    return socket ? (socket->getCurrentState() ? 1 : 0) : 0;
+    else
+    {
+        // Crosses midnight (e.g., 23:00 to 06:00)
+        result = (currentMinutes >= startTotalMinutes || currentMinutes < endTotalMinutes) ? 1 : 0;
+    }
+
+    Serial.printf("Time between %s and %s: %s\n", startTime, endTime, result ? "true" : "false");
+    return result;
 }
 
-int SimpleRuleEngine::isOff(int socket_number)
+int SimpleRuleEngine::turnOnBefore(const char *timeStr)
 {
-    return 1 - isOn(socket_number);
+    int currentHour, currentMinute;
+    timeSync.getCurrentHourMinute(currentHour, currentMinute);
+    int currentMinutes = currentHour * 60 + currentMinute;
+
+    // Parse input time string (format: "HH:MM")
+    int hours, minutes;
+    sscanf(timeStr, "%d:%d", &hours, &minutes);
+    int targetMinutes = hours * 60 + minutes;
+
+    int result = (currentMinutes < targetMinutes) ? 1 : 0;
+    Serial.printf("Turn on before %s: %s\n", timeStr, result ? "true" : "false");
+    return result;
 }
 
-// still need to code the turnOnAfter, turnOffAfter, turnOnBefore, and turnOffBefore functions
-// they should be a int function as well ? or not ?.
-// ea they take current time and compare it to the timeStr
-
-void SimpleRuleEngine::turnOnAfter(int socket_number, const char *timeStr)
+int SimpleRuleEngine::turnOnAfter(const char *startTime)
 {
-    turnOn(socket_number, after(timeStr));
+    int currentHour, currentMinute;
+    timeSync.getCurrentHourMinute(currentHour, currentMinute);
+    int currentMinutes = currentHour * 60 + currentMinute;
+
+    // Parse start time
+    int startHours, startMinutes;
+    sscanf(startTime, "%d:%d", &startHours, &startMinutes);
+    int startTotalMinutes = startHours * 60 + startMinutes;
+
+    int result = (currentMinutes >= startTotalMinutes) ? 1 : 0;
+    Serial.printf("Turn on after %s: %s\n", startTime, result ? "true" : "false");
+    return result;
 }
 
-void SimpleRuleEngine::turnOffAfter(int socket_number, const char *timeStr)
+int SimpleRuleEngine::turnOffAfter(const char *startTime)
 {
-    turnOff(socket_number, after(timeStr));
+    int currentHour, currentMinute;
+    timeSync.getCurrentHourMinute(currentHour, currentMinute);
+    int currentMinutes = currentHour * 60 + currentMinute;
+
+    // Parse start time
+    int startHours, startMinutes;
+    sscanf(startTime, "%d:%d", &startHours, &startMinutes);
+    int startTotalMinutes = startHours * 60 + startMinutes;
+
+    int result = (currentMinutes < startTotalMinutes) ? 1 : 0; // Return 1 BEFORE the time, 0 after
+    Serial.printf("Turn off after %s: %s\n", startTime, result ? "true" : "false");
+    return result;
 }
 
-void SimpleRuleEngine::turnOnBefore(int socket_number, const char *timeStr)
+int SimpleRuleEngine::isWeekday(uint8_t dayPattern)
 {
-    turnOn(socket_number, before(timeStr));
+    int currentHour, currentMinute;
+    timeSync.getCurrentHourMinute(currentHour, currentMinute);
+
+    // Get current weekday (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+    time_t now;
+    time(&now);
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    int today = timeinfo.tm_wday; // 0-6, Sunday=0
+
+    // Convert weekday to our bit pattern (1 << 0 for Sunday, 1 << 1 for Monday, etc)
+    uint8_t todayBit = (1 << today);
+
+    int result = (dayPattern & todayBit) ? 1 : 0;
+    Serial.printf("Day check (pattern: 0x%02X): %s\n", dayPattern, result ? "true" : "false");
+    return result;
 }
 
-void SimpleRuleEngine::turnOffBefore(int socket_number, const char *timeStr)
+int SimpleRuleEngine::setMem(int slot, unsigned long value)
 {
-    turnOff(socket_number, before(timeStr));
+    if (slot < 0 || slot >= MEMORY_SLOTS)
+    {
+        Serial.printf("Memory slot %d out of range!\n", slot);
+        return 0;
+    }
+
+    memory[slot] = value;
+    Serial.printf("Set memory slot %d to %lu\n", slot, value);
+    return 1;
+}
+
+int SimpleRuleEngine::readMem(int slot)
+{
+    if (slot < 0 || slot >= MEMORY_SLOTS)
+    {
+        Serial.printf("Memory slot %d out of range!\n", slot);
+        return 0;
+    }
+
+    unsigned long value = memory[slot];
+    Serial.printf("Read memory slot %d: %lu\n", slot, value);
+    return value;
+}
+
+int SimpleRuleEngine::Delay(int memSlot, int triggerFunction)
+{
+    unsigned long currentMillis = millis();
+
+    // If trigger function is true and timer isn't running
+    if (triggerFunction && readMem(memSlot) == 0)
+    {
+        setMem(memSlot, currentMillis);
+        Serial.printf("Starting delay in slot %d\n", memSlot);
+        return 0;
+    }
+
+    // If timer is running
+    if (readMem(memSlot) > 0)
+    {
+        const unsigned long DELAY_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+        if (currentMillis - readMem(memSlot) >= DELAY_PERIOD)
+        {
+            setMem(memSlot, 0); // Reset timer
+            Serial.printf("Delay completed in slot %d\n", memSlot);
+            return 1;
+        }
+        Serial.printf("Delay still running in slot %d\n", memSlot);
+        return 0;
+    }
+
+    return 0;
 }
 
 int SimpleRuleEngine::pingFound()
@@ -1310,34 +1450,74 @@ int SimpleRuleEngine::pingNotFound()
     return result;
 }
 
+int SimpleRuleEngine::isOn(int socket_number)
+{
+    HomeSocketDevice *socket = getSocket(socket_number);
+    if (!socket)
+        return 0;
+
+    updateSocketDuration(socket_number);
+    return socket->getCurrentState() ? 1 : 0;
+}
+
+int SimpleRuleEngine::isOff(int socket_number)
+{
+    return 1 - isOn(socket_number);
+}
+
+void SimpleRuleEngine::updateSocketDuration(int socket_number)
+{
+    if (socket_number < 1 || socket_number > MAX_SOCKETS)
+        return;
+
+    int idx = socket_number - 1;
+    SocketState &state = socketStates[idx];
+
+    // Get current time
+    int currentHour, currentMinute;
+    timeSync.getCurrentHourMinute(currentHour, currentMinute);
+
+    // If state changed, update timestamps
+    HomeSocketDevice *socket = getSocket(socket_number);
+    if (socket && socket->getCurrentState() != state.currentState)
+    {
+        state.currentState = socket->getCurrentState();
+        state.lastStateChange = millis();
+        state.lastChangeHour = currentHour;
+        state.lastChangeMinute = currentMinute;
+        state.stateChangeProcessed = false;
+
+        Serial.printf("Socket %d state changed to: %s at %02d:%02d\n",
+                      socket_number, state.currentState ? "ON" : "OFF",
+                      currentHour, currentMinute);
+    }
+}
+
 void SimpleRuleEngine::turnOn(int socket_number, int condition)
 {
     Serial.printf("\nEvaluating ON rule for socket %d\n", socket_number);
     Serial.printf("Condition result: %s\n", condition ? "true" : "false");
 
-    HomeSocketDevice *socket = nullptr;
-    switch (socket_number)
-    {
-    case 1:
-        socket = socket1;
-        break;
-    case 2:
-        socket = socket2;
-        break;
-    case 3:
-        socket = socket3;
-        break;
-    }
+    HomeSocketDevice *socket = getSocket(socket_number);
+    if (!socket)
+        return;
 
-    if (condition && socket)
+    int idx = socket_number - 1;
+    SocketState &state = socketStates[idx];
+
+    // Only turn on if not already on and condition is true
+    if (condition && (!socket->getCurrentState() || !state.stateChangeProcessed))
     {
         Serial.printf("â†’ Turning ON socket %d\n", socket_number);
         socket->setState(true);
+        state.stateChangeProcessed = true;
     }
     else
     {
         Serial.printf("â†’ No action for socket %d\n", socket_number);
     }
+
+    updateSocketDuration(socket_number);
     Serial.println("----------------------------------------");
 }
 
@@ -1346,32 +1526,64 @@ void SimpleRuleEngine::turnOff(int socket_number, int condition)
     Serial.printf("\nEvaluating OFF rule for socket %d\n", socket_number);
     Serial.printf("Condition result: %s\n", condition ? "true" : "false");
 
-    HomeSocketDevice *socket = nullptr;
-    switch (socket_number)
-    {
-    case 1:
-        socket = socket1;
-        break;
-    case 2:
-        socket = socket2;
-        break;
-    case 3:
-        socket = socket3;
-        break;
-    }
+    HomeSocketDevice *socket = getSocket(socket_number);
+    if (!socket)
+        return;
 
-    if (condition && socket)
+    int idx = socket_number - 1;
+    SocketState &state = socketStates[idx];
+
+    // Only turn off if not already off and condition is true
+    if (condition && (socket->getCurrentState() || !state.stateChangeProcessed))
     {
         Serial.printf("â†’ Turning OFF socket %d\n", socket_number);
         socket->setState(false);
+        state.stateChangeProcessed = true;
     }
     else
     {
         Serial.printf("â†’ No action for socket %d\n", socket_number);
     }
+
+    updateSocketDuration(socket_number);
     Serial.println("----------------------------------------");
 }
 
+int SimpleRuleEngine::hasBeenOnFor(int socket_number, int minutes)
+{
+    HomeSocketDevice *socket = getSocket(socket_number);
+    if (!socket || !socket->getCurrentState())
+        return 0;
+
+    int idx = socket_number - 1;
+    SocketState &state = socketStates[idx];
+
+    unsigned long duration = (millis() - state.lastStateChange) / (60 * 1000);
+    int result = (duration >= minutes) ? 1 : 0;
+
+    Serial.printf("Socket %d has been ON for %lu minutes (target: %d): %s\n",
+                  socket_number, duration, minutes, result ? "true" : "false");
+
+    return result;
+}
+
+int SimpleRuleEngine::hasBeenOffFor(int socket_number, int minutes)
+{
+    HomeSocketDevice *socket = getSocket(socket_number);
+    if (!socket || socket->getCurrentState())
+        return 0;
+
+    int idx = socket_number - 1;
+    SocketState &state = socketStates[idx];
+
+    unsigned long duration = (millis() - state.lastStateChange) / (60 * 1000);
+    int result = (duration >= minutes) ? 1 : 0;
+
+    Serial.printf("Socket %d has been OFF for %lu minutes (target: %d): %s\n",
+                  socket_number, duration, minutes, result ? "true" : "false");
+
+    return result;
+}
 ``n
 # TimeSync.cpp
 
@@ -2542,13 +2754,56 @@ https://gcc.gnu.org/onlinedocs/cpp/Header-Files.html
 
 class SimpleRuleEngine
 {
+    struct SocketState
+    {
+        bool currentState;             // Current on/off state
+        unsigned long lastStateChange; // When the current state started (millis)
+        int lastChangeHour;            // Hour of last state change (for time persistence)
+        int lastChangeMinute;          // Minute of last state change
+        bool stateChangeProcessed;     // Flag to prevent multiple triggers in same state
+    };
+
 private:
     float current_lux;
     static const int MEMORY_SLOTS = 32;  // used in TurnUntil
     bool memory[MEMORY_SLOTS] = {false}; // used in TurnUntil
 
+    static const int MAX_SOCKETS = 3;
+    SocketState socketStates[MAX_SOCKETS];
+    HomeSocketDevice *sockets[MAX_SOCKETS]; // Array instead of individual pointers
+
+    // Helper function to get socket and validate
+    HomeSocketDevice *getSocket(int socket_number);
+    void updateSocketDuration(int socket_number);
+
 public:
-    SimpleRuleEngine();
+    // In the header:
+
+    static const uint8_t SUNDAY = 0b00000001;
+    static const uint8_t MONDAY = 0b00000010;
+    static const uint8_t TUESDAY = 0b00000100;
+    static const uint8_t WEDNESDAY = 0b00001000;
+    static const uint8_t THURSDAY = 0b00010000;
+    static const uint8_t FRIDAY = 0b00100000;
+    static const uint8_t SATURDAY = 0b01000000;
+
+    // Convenient combinations
+    static const uint8_t WEEKDAYS = MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY;
+    static const uint8_t WEEKEND = SATURDAY | SUNDAY;
+    static const uint8_t EVERYDAY = WEEKDAYS | WEEKEND;
+
+    int isWeekday(uint8_t dayPattern);
+
+public:
+    SimpleRuleEngine()
+    {
+        // Initialize socket pointers to nullptr
+        for (int i = 0; i < MAX_SOCKETS; i++)
+        {
+            sockets[i] = nullptr;
+            socketStates[i] = {false, 0, 0, 0, true};
+        }
+    }
     void updateLightLevel();
     int lightSensorAbove(int lux_value);
     int lightSensorBelow(int lux_value);
@@ -2563,10 +2818,25 @@ public:
     int isOn(int socket_number);
     int isOff(int socket_number);
 
-    void turnOnAfter(int socket_number, const char *timeStr);
-    void turnOffAfter(int socket_number, const char *timeStr);
-    void turnOnBefore(int socket_number, const char *timeStr);
-    void turnOffBefore(int socket_number, const char *timeStr);
+    // Time-based functions
+    int turnOnInbetween(const char *startTime, const char *endTime);
+    int turnOnAfter(const char *startTime);
+    int turnOffAfter(const char *startTime);
+
+    int turnOnBefore(const char *startTime);
+    int turnOfBefore(const char *startTime);
+
+    int hasBeenOnFor(int socket_number, int minutes);
+    int hasBeenOffFor(int socket_number, int minutes);
+
+    int setMem(int slot, unsigned long value);
+    int readMem(int slot);
+    int Delay(int memSlot, int triggerFunction);
+
+    // Logical operators
+    int OR(int func1, int func2);
+    int AND(int func1, int func2);
+    int NOT(int func);
 
     int TurnUntil(int memoryIndex, int turnOnCondition, int turnOffCondition);
 };

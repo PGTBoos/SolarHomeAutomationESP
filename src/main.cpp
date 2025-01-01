@@ -286,6 +286,7 @@ void setup()
     Serial.println("Using default configuration");
   }
 
+  Wire.setClock(100000);
   Wire.begin();
 
   if (display.begin())
@@ -347,11 +348,6 @@ void setup()
 
   // Initialize timing and state
   unsigned long startTime = millis();
-  for (int i = 0; i < 3; i++)
-  {
-    lastStateChangeTime[i] = startTime;
-    switchForceOff[i] = false;
-  }
 }
 
 void reconnectWiFi()
