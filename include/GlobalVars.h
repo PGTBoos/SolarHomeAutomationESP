@@ -42,9 +42,9 @@ extern Config config;
 // Timing control structure
 struct TimingControl
 {
-    const unsigned long ENV_SENSOR_INTERVAL = 30000;   // 30 seconds
-    const unsigned long LIGHT_SENSOR_INTERVAL = 30000; // 30 seconds
-    const unsigned long DISPLAY_INTERVAL = 1000;       // 1 second
+    const unsigned long ENV_SENSOR_INTERVAL = 10000;   // 10 seconds
+    const unsigned long LIGHT_SENSOR_INTERVAL = 10000; // 10 seconds
+    const unsigned long DISPLAY_INTERVAL = 500;        // 1 second
     const unsigned long P1_INTERVAL = 1000;            // 1 second
     const unsigned long SOCKET_INTERVAL = 5000;        // 5 seconds
     const unsigned long WIFI_CHECK_INTERVAL = 30000;   // 30 seconds

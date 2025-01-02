@@ -220,13 +220,19 @@ void updateDisplay()
   if (!p1Meter)
     return;
   unsigned long currentMillis = millis();
-  if (currentMillis - lastTimeDisplay >= 60000)
-  { // 60 seconds
+  if (currentMillis - lastTimeDisplay >= 1000)
+  {
     int hour, minute;
     timeSync.getCurrentHourMinute(hour, minute);
     Serial.printf("Current time: %02d:%02d\n", hour, minute);
     lastTimeDisplay = currentMillis;
   }
+
+  // Calculate time differences
+  String sw1Time = String((unsigned long)(millis() - lastStateChangeTime[0]));
+  String sw2Time = String((unsigned long)(millis() - lastStateChangeTime[1]));
+  String sw3Time = String((unsigned long)(millis() - lastStateChangeTime[2]));
+
   display.updateDisplay(
       p1Meter->getCurrentImport(),
       p1Meter->getCurrentExport(),
@@ -236,11 +242,10 @@ void updateDisplay()
       socket1 ? socket1->getCurrentState() : false,
       socket2 ? socket2->getCurrentState() : false,
       socket3 ? socket3->getCurrentState() : false,
-      String(millis() - lastStateChangeTime[0]),
-      String(millis() - lastStateChangeTime[1]),
-      String(millis() - lastStateChangeTime[2]));
+      sw1Time,
+      sw2Time,
+      sw3Time);
 }
-
 void setup()
 {
   WiFi.persistent(false);
