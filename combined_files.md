@@ -1,27 +1,37 @@
-﻿# DisplayManager.cpp
-
-`$fileType
+﻿
+-------------------
 // DisplayManager.cpp
 #include "DisplayManager.h"
+#include <WiFi.h>
+#include <timeSync.h>
 
-// Constructor implementation
-DisplayManager::DisplayManager() : display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET) {}
+// Assuming timeSync is a global or class member variable
+extern TimeSync *timeSync;
 
 bool DisplayManager::begin()
 {
-    // Initialize display
-    displayFound = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-    if (!displayFound)
+    Serial.println("\nInitializing \nOLED display...");
+
+    if (!display.begin())
     {
-        Serial.println("Could not find SSD1306 OLED display!");
+        Serial.println("SH1106 allocation failed");
         return false;
     }
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.println("Initializing...");
-    display.display();
+    // Setup display parameters
+    display.setDisplayRotation(U8G2_R1);
+    display.setFont(u8g2_font_profont10_tr); // Default font for labels
+    display.setDrawColor(1);
+    display.setFontPosTop();
+    display.clearBuffer();
+
+    // Draw initial test pattern
+    display.drawStr(0, 0, "Display Ready");
+    display.drawFrame(0, 0, display.getWidth(), display.getHeight());
+    display.sendBuffer();
+
+    displayFound = true;
+    Serial.println("Display initialized successfully!");
     return true;
 }
 
@@ -30,21 +40,45 @@ void DisplayManager::showPowerPage(float importPower, float exportPower)
     if (!displayFound)
         return;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Power Monitor");
-    display.println();
+    display.clearBuffer();
 
-    display.print("Import: ");
-    display.print(importPower, 1);
-    display.println("W");
+    // Title
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawBox(0, 0, 64, 12);
+    display.setDrawColor(0);
+    display.drawStr(2, 2, "Power");
+    display.setDrawColor(1);
 
-    display.print("Export: ");
-    display.print(exportPower, 1);
-    display.println("W");
+    // Function to format power value
+    auto formatPower = [](float power) -> String
+    {
+        if (abs(power) >= 1000)
+        {
+            // Display in kW with 2 decimals
+            return String(power / 1000.0, 2) + " kW";
+        }
+        else
+        {
+            // Display in Watt with no decimals
+            return String((int)power) + " Watt";
+        }
+    };
 
-    display.display();
+    // Import
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 17, "Import:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 27);
+    display.print(formatPower(importPower));
+
+    // Export
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 45, "Export:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 55);
+    display.print(formatPower(exportPower));
+
+    display.sendBuffer();
 }
 
 void DisplayManager::showEnvironmentPage(float temp, float humidity, float light)
@@ -52,49 +86,161 @@ void DisplayManager::showEnvironmentPage(float temp, float humidity, float light
     if (!displayFound)
         return;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Environment");
-    display.println();
+    display.clearBuffer();
 
-    display.print("Temp: ");
+    // Title
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawBox(0, 0, 64, 12);
+    display.setDrawColor(0);
+    display.drawStr(2, 2, "Environment");
+    display.setDrawColor(1);
+
+    // Temperature
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 17, "Temperature:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 27);
     display.print(temp, 1);
-    display.println("C");
+    display.print(" C'");
 
-    display.print("Humidity: ");
+    // Humidity
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 45, "Humidity:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 55);
     display.print(humidity, 0);
-    display.println("%");
+    display.print(" %");
 
-    display.print("Light: ");
+    // Light
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 73, "Light:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 83);
     display.print(light, 0);
-    display.println(" lux");
+    display.print(" Lux");
 
-    display.display();
+    display.sendBuffer();
 }
 
 void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
-                                      const String &sw1Time, const String &sw2Time, const String &sw3Time)
+                                      const String &sw1Time, const String &sw2Time,
+                                      const String &sw3Time)
 {
     if (!displayFound)
         return;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Switches");
-    display.println();
+    display.clearBuffer();
 
-    display.print("SW1: ");
-    display.println(switch1 ? "ON " + sw1Time : "OFF");
+    // Title
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawBox(0, 0, 64, 12);
+    display.setDrawColor(0);
+    display.drawStr(2, 2, "Switches");
+    display.setDrawColor(1);
 
-    display.print("SW2: ");
-    display.println(switch2 ? "ON " + sw2Time : "OFF");
+    // Function to draw switch status
+    auto drawSwitch = [&](int y, const char *name, bool state)
+    {
+        display.setFont(u8g2_font_profont10_tr);
+        display.drawStr(0, y, name);
 
-    display.print("SW3: ");
-    display.println(switch3 ? "ON " + sw3Time : "OFF");
+        display.setFont(u8g2_font_7x14_tr);
+        if (state)
+        {
+            display.drawBox(25, y - 1, 25, 14);
+            display.setDrawColor(0);
+            display.drawStr(27, y, "ON");
+            display.setDrawColor(1);
+        }
+        else
+        {
+            display.drawStr(27, y, "OFF");
+        }
+    };
 
-    display.display();
+    // Draw all switches with more spacing due to larger font
+    drawSwitch(20, "SW 1:", switch1);
+    drawSwitch(40, "SW 2:", switch2);
+    drawSwitch(60, "SW 3:", switch3);
+
+    display.sendBuffer();
+}
+
+void DisplayManager::showInfoPage()
+{
+    if (!displayFound)
+        return;
+
+    display.clearBuffer();
+
+    // Title
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawBox(0, 0, 64, 12);
+    display.setDrawColor(0);
+    display.drawStr(2, 2, "System Info");
+    display.setDrawColor(1);
+
+    // Time
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 17, "Time:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 27);
+    display.print(timeSync->getCurrentTime()); // Get time directly from TimeSync
+
+    // WiFi Status
+    display.setFont(u8g2_font_profont10_tr);
+    display.drawStr(0, 45, "WiFi:");
+    display.setFont(u8g2_font_7x14_tr);
+    display.setCursor(0, 55);
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        display.print("Online");
+
+        // IP Address with alternating backgrounds, no dots
+        display.setFont(u8g2_font_profont10_tr); // Slightly larger than 4x6
+        display.drawStr(0, 73, "IP:");
+        IPAddress ip = WiFi.localIP();
+
+        // Calculate positions with 5 pixels per character
+        const int charWidth = 5;
+        const int blockWidth = charWidth * 3 + 1; // Each block is 3 digits
+        const int startX = 0;
+        const int y = 83;
+
+        // Draw background blocks
+        for (int i = 0; i < 4; i++)
+        {
+            if (i % 2 == 1)
+            { // Alternate blocks
+                display.drawBox(startX + (i * blockWidth), y - 1, blockWidth, 10);
+            }
+        }
+
+        // Print numbers
+        display.setDrawColor(1); // Normal color for odd blocks
+        display.setCursor(startX, y);
+        display.printf("%03d", ip[0]);
+
+        display.setDrawColor(0); // Inverted for even blocks
+        display.setCursor(startX + blockWidth, y);
+        display.printf("%03d", ip[1]);
+
+        display.setDrawColor(1); // Back to normal
+        display.setCursor(startX + (blockWidth * 2), y);
+        display.printf("%03d", ip[2]);
+
+        display.setDrawColor(0); // Inverted for last block
+        display.setCursor(startX + (blockWidth * 3), y);
+        display.printf("%03d", ip[3]);
+
+        display.setDrawColor(1); // Reset to normal
+    }
+    else
+    {
+        display.print("Offline");
+    }
+
+    display.sendBuffer();
 }
 
 void DisplayManager::updateDisplay(float importPower, float exportPower,
@@ -108,7 +254,7 @@ void DisplayManager::updateDisplay(float importPower, float exportPower,
     // Rotate pages every PAGE_DURATION milliseconds
     if (millis() - lastPageChange >= PAGE_DURATION)
     {
-        currentPage = (currentPage + 1) % 3; // Cycle through 3 pages
+        currentPage = (currentPage + 1) % 4; // Cycle through 4 pages
         lastPageChange = millis();
     }
 
@@ -124,12 +270,12 @@ void DisplayManager::updateDisplay(float importPower, float exportPower,
     case 2:
         showSwitchesPage(sw1, sw2, sw3, sw1Time, sw2Time, sw3Time);
         break;
+    case 3:
+        showInfoPage(); // Now using the parameter-less version
+        break;
     }
 }
-``n
-# EnvironmentSensor.cpp
-
-`$fileType
+-------------------
 // EnvironmentSensors.cpp
 #include "EnvironmentSensor.h"
 
@@ -153,6 +299,13 @@ bool EnvironmentSensors::begin()
     if (!lightMeterFound)
     {
         Serial.println("Could not find BH1750 sensor!");
+    }
+    else
+    {
+        lightMeter.setMTreg(64);     // Set measurement time to 400ms
+        lightMeter.readLightLevel(); // Read once to start measurement
+
+        Serial.println("BH1750 sensor found!");
     }
 
     return bmeFound || lightMeterFound; // Return true if at least one sensor works
@@ -204,10 +357,7 @@ bool EnvironmentSensors::hasBH1750() const
 {
     return lightMeterFound;
 }
-``n
-# HomeP1Device.cpp
-
-`$fileType
+-------------------
 // HomeP1Device.cpp
 #include "HomeP1Device.h"
 
@@ -275,10 +425,7 @@ bool HomeP1Device::isConnected() const
 {
     return lastReadSuccess;
 }
-``n
-# HomeSocketDevice.cpp
-
-`$fileType
+-------------------
 #include "HomeSocketDevice.h"
 
 HomeSocketDevice::HomeSocketDevice(const char *ip) : baseUrl("http://" + String(ip)),
@@ -477,10 +624,7 @@ bool HomeSocketDevice::setState(bool state)
                   state ? "on" : "off");
     return true;
 }
-``n
-# HomeSystem.code-workspace
-
-`$fileType
+-------------------
 {
     "folders": [
 		{
@@ -489,10 +633,7 @@ bool HomeSocketDevice::setState(bool state)
 		}
 	]
 }
-``n
-# main.cpp
-
-`$fileType
+-------------------
 #include "main.h"
 
 // Global variable definitions
@@ -715,13 +856,19 @@ void updateDisplay()
   if (!p1Meter)
     return;
   unsigned long currentMillis = millis();
-  if (currentMillis - lastTimeDisplay >= 60000)
-  { // 60 seconds
+  if (currentMillis - lastTimeDisplay >= 1000)
+  {
     int hour, minute;
     timeSync.getCurrentHourMinute(hour, minute);
     Serial.printf("Current time: %02d:%02d\n", hour, minute);
     lastTimeDisplay = currentMillis;
   }
+
+  // Calculate time differences
+  String sw1Time = String((unsigned long)(millis() - lastStateChangeTime[0]));
+  String sw2Time = String((unsigned long)(millis() - lastStateChangeTime[1]));
+  String sw3Time = String((unsigned long)(millis() - lastStateChangeTime[2]));
+
   display.updateDisplay(
       p1Meter->getCurrentImport(),
       p1Meter->getCurrentExport(),
@@ -731,11 +878,10 @@ void updateDisplay()
       socket1 ? socket1->getCurrentState() : false,
       socket2 ? socket2->getCurrentState() : false,
       socket3 ? socket3->getCurrentState() : false,
-      String(millis() - lastStateChangeTime[0]),
-      String(millis() - lastStateChangeTime[1]),
-      String(millis() - lastStateChangeTime[2]));
+      sw1Time,
+      sw2Time,
+      sw3Time);
 }
-
 void setup()
 {
   WiFi.persistent(false);
@@ -781,6 +927,7 @@ void setup()
     Serial.println("Using default configuration");
   }
 
+  Wire.setClock(100000);
   Wire.begin();
 
   if (display.begin())
@@ -842,11 +989,6 @@ void setup()
 
   // Initialize timing and state
   unsigned long startTime = millis();
-  for (int i = 0; i < 3; i++)
-  {
-    lastStateChangeTime[i] = startTime;
-    switchForceOff[i] = false;
-  }
 }
 
 void reconnectWiFi()
@@ -1023,10 +1165,7 @@ void loop()
 //    { // Weekend (Sat-Sun)
 //      if (time.dayOfWeek <= 5)
 //      { // Weekday (Mon-Fri)
-``n
-# main.md
-
-`$fileType
+-------------------
 **Some C++ reminders of the C++ syntax and concepts used in the code:**
 -----
 
@@ -1106,10 +1245,7 @@ attempts++;  // Postfix increment
 
 Would you like me to explain any of these concepts in more detail? Or would you like to see more examples of specific C++ features?
 
-``n
-# NetworkCheck.cpp
-
-`$fileType
+-------------------
 // NetworkCheck.cpp
 #include "NetworkCheck.h"
 
@@ -1164,10 +1300,7 @@ bool NetworkCheck::pingDevice()
     }
     return success;
 }
-``n
-# RulesEngine.cpp
-
-`$fileType
+-------------------
 // SimpleRuleEngine.cpp
 #include "RulesEngine.h"
 
@@ -1431,7 +1564,7 @@ int SimpleRuleEngine::Delay(int memSlot, int triggerFunction)
     return 0;
 }
 
-int SimpleRuleEngine::pingFound()
+int SimpleRuleEngine::phoneFound()
 {
     if (phoneCheck)
     {
@@ -1443,9 +1576,9 @@ int SimpleRuleEngine::pingFound()
     return 0;
 }
 
-int SimpleRuleEngine::pingNotFound()
+int SimpleRuleEngine::phoneNotFound()
 {
-    int result = 1 - pingFound();
+    int result = 1 - phoneFound();
     Serial.printf("Phone absent: %s\n", result ? "true" : "false");
     return result;
 }
@@ -1584,10 +1717,7 @@ int SimpleRuleEngine::hasBeenOffFor(int socket_number, int minutes)
 
     return result;
 }
-``n
-# TimeSync.cpp
-
-`$fileType
+-------------------
 // TimeSync.cpp
 #include "TimeSync.h"
 
@@ -1749,10 +1879,7 @@ TimeSync::TimeData TimeSync::getTime()
     }
     return t;
 }
-``n
-# WebInterface.cpp
-
-`$fileType
+-------------------
 // WebServer.cpp
 #include "WebInterface.h"
 
@@ -2063,10 +2190,7 @@ void WebInterface::handleSwitch(int switchNumber)
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "application/json", "{\"success\":true}");
 }
-``n
-# index.html
-
-`$fileType
+-------------------
 <!DOCTYPE html>
 <html>
 
@@ -2385,40 +2509,35 @@ void WebInterface::handleSwitch(int switchNumber)
 </body>
 
 </html>
-``n
-# DisplayManager.h
-
-`$fileType
-// DisplayManager.h
+-------------------
 #ifndef DISPLAY_MANAGER_H
 #define DISPLAY_MANAGER_H
 
+#include <U8g2lib.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-#define SCREEN_ADDRESS 0x3C
-
+#include <WiFi.h>
+#include <Arduino.h>
+#include "TimeSync.h"
 class DisplayManager
 {
 private:
-    Adafruit_SSD1306 display;
+    U8G2_SH1106_128X64_NONAME_F_HW_I2C display;
     bool displayFound = false;
     int currentPage = 0;
     unsigned long lastPageChange = 0;
-    const unsigned long PAGE_DURATION = 3000;
+    const unsigned long PAGE_DURATION = 500;
 
     void showPowerPage(float importPower, float exportPower);
     void showEnvironmentPage(float temp, float humidity, float light);
     void showSwitchesPage(bool switch1, bool switch2, bool switch3,
                           const String &sw1Time, const String &sw2Time, const String &sw3Time);
+    void showInfoPage();
 
 public:
-    DisplayManager();
+    DisplayManager() : display(U8G2_R0, /* reset= */ U8X8_PIN_NONE) {}
     bool begin();
+
+    // Basic display update (without info page)
     void updateDisplay(float importPower, float exportPower,
                        float temp, float humidity, float light,
                        bool sw1, bool sw2, bool sw3,
@@ -2426,10 +2545,7 @@ public:
 };
 
 #endif
-``n
-# EnvironmentSensor.h
-
-`$fileType
+-------------------
 // EnvironmentSensor.h
 #ifndef ENVIRONMENT_SENSORS_H
 #define ENVIRONMENT_SENSORS_H
@@ -2464,10 +2580,7 @@ public:
 };
 
 #endif
-``n
-# GlobalVars.h
-
-`$fileType
+-------------------
 // GlobalVars.h
 #ifndef GLOBAL_VARS_H
 #define GLOBAL_VARS_H
@@ -2512,13 +2625,13 @@ extern Config config;
 // Timing control structure
 struct TimingControl
 {
-    const unsigned long ENV_SENSOR_INTERVAL = 30000;   // 30 seconds
-    const unsigned long LIGHT_SENSOR_INTERVAL = 30000; // 30 seconds
-    const unsigned long DISPLAY_INTERVAL = 1000;       // 1 second
-    const unsigned long P1_INTERVAL = 1000;            // 1 second
-    const unsigned long SOCKET_INTERVAL = 5000;        // 5 seconds
-    const unsigned long WIFI_CHECK_INTERVAL = 30000;   // 30 seconds
-    const unsigned long PHONE_CHECK_INTERVAL = 60000;  // 60 seconds
+    const unsigned long ENV_SENSOR_INTERVAL = 500;    // 10 seconds
+    const unsigned long LIGHT_SENSOR_INTERVAL = 500;  // 10 seconds
+    const unsigned long DISPLAY_INTERVAL = 1500;      // 1 second
+    const unsigned long P1_INTERVAL = 1000;           // 1 second
+    const unsigned long SOCKET_INTERVAL = 5000;       // 5 seconds
+    const unsigned long WIFI_CHECK_INTERVAL = 30000;  // 30 seconds
+    const unsigned long PHONE_CHECK_INTERVAL = 60000; // 60 seconds
 
     unsigned long lastEnvSensorUpdate = 0;
     unsigned long lastLightSensorUpdate = 0;
@@ -2533,10 +2646,7 @@ struct TimingControl
 
 extern TimingControl timing;
 #endif
-``n
-# HomeP1Device.h
-
-`$fileType
+-------------------
 // HomeP1Device.h
 #ifndef HOME_P1_DEVICE_H
 #define HOME_P1_DEVICE_H
@@ -2571,10 +2681,7 @@ public:
 };
 
 #endif
-``n
-# HomeSocketDevice.h
-
-`$fileType
+-------------------
 #ifndef HOME_SOCKET_DEVICE_H
 #define HOME_SOCKET_DEVICE_H
 
@@ -2610,10 +2717,7 @@ public:
 };
 
 #endif
-``n
-# main.h
-
-`$fileType
+-------------------
 #pragma once
 
 #include <Arduino.h>
@@ -2669,10 +2773,7 @@ extern bool switchForceOff[3];
 extern unsigned long lastTimeDisplay;
 extern HomeP1Device *p1Meter;
 extern EnvironmentSensors sensors;
-``n
-# NetworkCheck.h
-
-`$fileType
+-------------------
 // NetworkCheck.h
 #ifndef NETWORK_CHECK_H
 #define NETWORK_CHECK_H
@@ -2698,10 +2799,7 @@ public:
 };
 
 #endif
-``n
-# README
-
-`$fileType
+-------------------
 
 This directory is intended for project header files.
 
@@ -2742,10 +2840,7 @@ Read more about using header files in official GCC documentation:
 
 https://gcc.gnu.org/onlinedocs/cpp/Header-Files.html
 
-``n
-# RulesEngine.h
-
-`$fileType
+-------------------
 // SimpleRuleEngine.h
 #ifndef SIMPLE_RULE_ENGINE_H
 #define SIMPLE_RULE_ENGINE_H
@@ -2807,8 +2902,8 @@ public:
     void updateLightLevel();
     int lightSensorAbove(int lux_value);
     int lightSensorBelow(int lux_value);
-    int pingFound();
-    int pingNotFound();
+    int phoneFound();
+    int phoneNotFound();
     void turnOn(int socket_number, int condition);
     void turnOff(int socket_number, int condition);
 
@@ -2843,10 +2938,7 @@ public:
 
 #endif
 
-``n
-# TimeSync.h
-
-`$fileType
+-------------------
 // TimeSync.h
 #ifndef TIME_SYNC_H
 #define TIME_SYNC_H
@@ -2893,10 +2985,7 @@ public:
 };
 
 #endif
-``n
-# WebInterface.h
-
-`$fileType
+-------------------
 // WebInterface.h
 #pragma once
 
@@ -2965,5 +3054,3 @@ public:
         }
     }
 };
-``n
-

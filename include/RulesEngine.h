@@ -59,8 +59,8 @@ public:
     void updateLightLevel();
     int lightSensorAbove(int lux_value);
     int lightSensorBelow(int lux_value);
-    int pingFound();
-    int pingNotFound();
+    int phoneFound();
+    int phoneNotFound();
     void turnOn(int socket_number, int condition);
     void turnOff(int socket_number, int condition);
 

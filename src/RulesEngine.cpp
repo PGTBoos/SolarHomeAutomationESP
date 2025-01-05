@@ -261,7 +261,7 @@ int SimpleRuleEngine::Delay(int memSlot, int triggerFunction)
     return 0;
 }
 
-int SimpleRuleEngine::pingFound()
+int SimpleRuleEngine::phoneFound()
 {
     if (phoneCheck)
     {
@@ -273,9 +273,9 @@ int SimpleRuleEngine::pingFound()
     return 0;
 }
 
-int SimpleRuleEngine::pingNotFound()
+int SimpleRuleEngine::phoneNotFound()
 {
-    int result = 1 - pingFound();
+    int result = 1 - phoneFound();
     Serial.printf("Phone absent: %s\n", result ? "true" : "false");
     return result;
 }

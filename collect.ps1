@@ -20,12 +20,13 @@ foreach ($file in $files) {
     $fileType = $file.Extension.TrimStart(".")
     
     # Add filename as header
-    $markdownContent += "# $($file.Name)`n`n"
+    #
     
     # Add file content in code block with type
-    $markdownContent += "```$fileType`n"
-    $markdownContent += (Get-Content -Path $file.FullName -Raw)
-    $markdownContent += "`n````n`n"
+    $markdownContent += [char]10+"-------------------" 
+    $markdownContent += [char]10+(Get-Content  $file.FullName -Raw)
+   # $markdownContent += [char]10+"// $($file.Name)"
+ 
 }
 
 # Write content to file

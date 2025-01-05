@@ -1,9 +1,14 @@
 // DisplayManager.cpp
 #include "DisplayManager.h"
+#include <WiFi.h>
+#include <timeSync.h>
+
+// Assuming timeSync is a global or class member variable
+extern TimeSync *timeSync;
 
 bool DisplayManager::begin()
 {
-    Serial.println("\nInitializing OLED display...");
+    Serial.println("\nInitializing \nOLED display...");
 
     if (!display.begin())
     {
@@ -159,7 +164,7 @@ void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
     display.sendBuffer();
 }
 
-void DisplayManager::showInfoPage(const String &time, const String &ip, bool wifiConnected)
+void DisplayManager::showInfoPage()
 {
     if (!displayFound)
         return;
@@ -178,39 +183,59 @@ void DisplayManager::showInfoPage(const String &time, const String &ip, bool wif
     display.drawStr(0, 17, "Time:");
     display.setFont(u8g2_font_7x14_tr);
     display.setCursor(0, 27);
-    display.print(time);
+    display.print(timeSync->getCurrentTime()); // Get time directly from TimeSync
 
     // WiFi Status
     display.setFont(u8g2_font_profont10_tr);
     display.drawStr(0, 45, "WiFi:");
     display.setFont(u8g2_font_7x14_tr);
     display.setCursor(0, 55);
-    if (wifiConnected)
+    if (WiFi.status() == WL_CONNECTED)
     {
         display.print("Online");
+
+        // IP Address with alternating backgrounds, no dots
+        display.setFont(u8g2_font_profont10_tr); // Slightly larger than 4x6
+        display.drawStr(0, 73, "IP:");
+        IPAddress ip = WiFi.localIP();
+
+        // Calculate positions with 5 pixels per character
+        const int charWidth = 5;
+        const int blockWidth = charWidth * 3 + 1; // Each block is 3 digits
+        const int startX = 0;
+        const int y = 83;
+
+        // Draw background blocks
+        for (int i = 0; i < 4; i++)
+        {
+            if (i % 2 == 1)
+            { // Alternate blocks
+                display.drawBox(startX + (i * blockWidth), y - 1, blockWidth, 10);
+            }
+        }
+
+        // Print numbers
+        display.setDrawColor(1); // Normal color for odd blocks
+        display.setCursor(startX, y);
+        display.printf("%03d", ip[0]);
+
+        display.setDrawColor(0); // Inverted for even blocks
+        display.setCursor(startX + blockWidth, y);
+        display.printf("%03d", ip[1]);
+
+        display.setDrawColor(1); // Back to normal
+        display.setCursor(startX + (blockWidth * 2), y);
+        display.printf("%03d", ip[2]);
+
+        display.setDrawColor(0); // Inverted for last block
+        display.setCursor(startX + (blockWidth * 3), y);
+        display.printf("%03d", ip[3]);
+
+        display.setDrawColor(1); // Reset to normal
     }
     else
     {
         display.print("Offline");
-    }
-
-    // IP Address
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 73, "IP:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 83);
-    // Split IP into two lines if needed
-    if (ip.length() > 10)
-    {
-        String ip1 = ip.substring(0, ip.lastIndexOf('.'));
-        String ip2 = ip.substring(ip.lastIndexOf('.'));
-        display.print(ip1);
-        display.setCursor(0, 98);
-        display.print(ip2);
-    }
-    else
-    {
-        display.print(ip);
     }
 
     display.sendBuffer();
@@ -227,8 +252,12 @@ void DisplayManager::updateDisplay(float importPower, float exportPower,
     // Rotate pages every PAGE_DURATION milliseconds
     if (millis() - lastPageChange >= PAGE_DURATION)
     {
-        currentPage = (currentPage + 1) % 3; // Cycle through 3 pages
+        currentPage = (currentPage + 1) % 4; // Cycle through 4 pages
         lastPageChange = millis();
+    }
+    else
+    {
+        return;
     }
 
     // Show current page
@@ -244,8 +273,7 @@ void DisplayManager::updateDisplay(float importPower, float exportPower,
         showSwitchesPage(sw1, sw2, sw3, sw1Time, sw2Time, sw3Time);
         break;
     case 3:
-        // This is the info page, but we need to pass the correct parameters, time and IP
-        showInfoPage("12:00", wifi);
+        showInfoPage(); // Now using the parameter-less version
         break;
     }
 }
