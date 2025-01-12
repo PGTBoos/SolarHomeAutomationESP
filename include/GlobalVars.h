@@ -30,6 +30,11 @@ struct Config
     String socket_2;
     String socket_3;
     String phone_ip;
+
+    float yesterdayImport;
+    float yesterdayExport;
+    int yesterday;
+
     float power_on_threshold;
     float power_off_threshold;
     unsigned long min_on_time;

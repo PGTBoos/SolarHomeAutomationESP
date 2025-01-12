@@ -1,0 +1,13 @@
+Language: Cpp
+# This keeps the opening brace on the same line for functions and control statements
+BraceWrapping:
+  AfterControlStatement: false
+  AfterFunction: false
+  BeforeCatch: false
+  BeforeElse: false
+BreakBeforeBraces: Attach
+# Other common settings you might want:
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+AllowShortFunctionsOnASingleLine: None

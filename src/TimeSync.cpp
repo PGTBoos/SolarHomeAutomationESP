@@ -152,6 +152,8 @@ TimeSync::TimeData TimeSync::getTime()
         t.hour = timeinfo.tm_hour;
         t.minute = timeinfo.tm_min;
         t.weekNum = ((timeinfo.tm_yday + 7 - timeinfo.tm_wday) / 7) + 1;
+        // day of the year
+        t.dayOfYear = timeinfo.tm_yday;
     }
     else
     {

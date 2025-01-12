@@ -1,279 +1,301 @@
 ﻿
 -------------------
+Language: Cpp
+# This keeps the opening brace on the same line for functions and control statements
+BraceWrapping:
+  AfterControlStatement: false
+  AfterFunction: false
+  BeforeCatch: false
+  BeforeElse: false
+BreakBeforeBraces: Attach
+# Other common settings you might want:
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+AllowShortFunctionsOnASingleLine: None
+-------------------
 // DisplayManager.cpp
 #include "DisplayManager.h"
+#include <GlobalVars.h>
 #include <WiFi.h>
 #include <timeSync.h>
 
 // Assuming timeSync is a global or class member variable
-extern TimeSync *timeSync;
+bool DisplayManager::begin() {
+  Serial.println("\nInitializing \nOLED display...");
 
-bool DisplayManager::begin()
-{
-    Serial.println("\nInitializing \nOLED display...");
+  if (!display.begin()) {
+    Serial.println("SH1106 allocation failed");
+    return false;
+  }
 
-    if (!display.begin())
-    {
-        Serial.println("SH1106 allocation failed");
-        return false;
+  // Setup display parameters
+  display.setDisplayRotation(U8G2_R1);
+  display.setFont(u8g2_font_profont10_tr); // Default font for labels
+  display.setDrawColor(1);
+  display.setFontPosTop();
+  display.clearBuffer();
+
+  // Draw initial test pattern
+  display.drawStr(5, 8, "Starting...");
+  display.drawFrame(0, 0, display.getWidth(), display.getHeight());
+  display.sendBuffer();
+
+  displayFound = true;
+  Serial.println("Display initialized successfully!");
+  return true;
+}
+
+void DisplayManager::showPowerPage(float importPower, float exportPower,
+                                   float totalImport, float totalExport) {
+  if (!displayFound)
+    return;
+
+  display.clearBuffer();
+
+  // Title
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawBox(0, 0, 64, 12);
+  display.setDrawColor(0);
+  display.drawStr(2, 2, "Power");
+  display.setDrawColor(1);
+
+  // Function to format power value
+  auto formatPower = [](float power) -> String {
+    if (abs(power) >= 1000) {
+      // Display in kW with 2 decimals
+      return String(power / 1000.0, 2) + " kW";
+    } else {
+      // Display in Watt with no decimals
+      return String((int)power) + " Watt";
     }
+  };
 
-    // Setup display parameters
-    display.setDisplayRotation(U8G2_R1);
-    display.setFont(u8g2_font_profont10_tr); // Default font for labels
-    display.setDrawColor(1);
-    display.setFontPosTop();
-    display.clearBuffer();
+  // Import
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 17, "Import:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 27);
+  display.print(formatPower(importPower));
 
-    // Draw initial test pattern
-    display.drawStr(0, 0, "Display Ready");
-    display.drawFrame(0, 0, display.getWidth(), display.getHeight());
-    display.sendBuffer();
+  // Export
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 45, "Export:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 55);
+  display.print(formatPower(exportPower));
 
-    displayFound = true;
-    Serial.println("Display initialized successfully!");
-    return true;
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 73, "Total:");
+
+  // daily import and export
+  float dailyImport = (config.yesterday > 0)
+                          ? (totalImport - config.yesterdayImport)
+                          : totalImport;
+  float dailyExport = (config.yesterday > 0)
+                          ? (totalExport - config.yesterdayExport)
+                          : totalExport;
+
+  // Daily import (used)
+  display.setFont(u8g2_font_profont10_tr);
+  String totalImportStr = "-" + formatPower(dailyImport);
+  int totalWidth = display.getStrWidth(totalImportStr.c_str());
+  display.setCursor(64 - totalWidth, 83);
+  display.print(totalImportStr);
+
+  // Daily export (produced)
+  String totalExportStr = "+" + formatPower(dailyExport);
+  totalWidth = display.getStrWidth(totalExportStr.c_str());
+  display.setCursor(64 - totalWidth, 93);
+  display.print(totalExportStr);
+
+  display.sendBuffer();
 }
 
-void DisplayManager::showPowerPage(float importPower, float exportPower)
-{
-    if (!displayFound)
-        return;
+void DisplayManager::showEnvironmentPage(float temp, float humidity,
+                                         float light) {
+  if (!displayFound)
+    return;
 
-    display.clearBuffer();
+  display.clearBuffer();
 
-    // Title
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawBox(0, 0, 64, 12);
-    display.setDrawColor(0);
-    display.drawStr(2, 2, "Power");
-    display.setDrawColor(1);
+  // Title
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawBox(0, 0, 64, 12);
+  display.setDrawColor(0);
+  display.drawStr(2, 2, "Environment");
+  display.setDrawColor(1);
 
-    // Function to format power value
-    auto formatPower = [](float power) -> String
-    {
-        if (abs(power) >= 1000)
-        {
-            // Display in kW with 2 decimals
-            return String(power / 1000.0, 2) + " kW";
-        }
-        else
-        {
-            // Display in Watt with no decimals
-            return String((int)power) + " Watt";
-        }
-    };
+  // Temperature
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 17, "Temperature:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 27);
+  display.print(temp, 1);
+  display.print(" C'");
 
-    // Import
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 17, "Import:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 27);
-    display.print(formatPower(importPower));
+  // Humidity
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 45, "Humidity:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 55);
+  display.print(humidity, 0);
+  display.print(" %");
 
-    // Export
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 45, "Export:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 55);
-    display.print(formatPower(exportPower));
+  // Light
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 73, "Light:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 83);
+  display.print(light, 0);
+  display.print(" Lux");
 
-    display.sendBuffer();
-}
-
-void DisplayManager::showEnvironmentPage(float temp, float humidity, float light)
-{
-    if (!displayFound)
-        return;
-
-    display.clearBuffer();
-
-    // Title
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawBox(0, 0, 64, 12);
-    display.setDrawColor(0);
-    display.drawStr(2, 2, "Environment");
-    display.setDrawColor(1);
-
-    // Temperature
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 17, "Temperature:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 27);
-    display.print(temp, 1);
-    display.print(" C'");
-
-    // Humidity
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 45, "Humidity:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 55);
-    display.print(humidity, 0);
-    display.print(" %");
-
-    // Light
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 73, "Light:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 83);
-    display.print(light, 0);
-    display.print(" Lux");
-
-    display.sendBuffer();
+  display.sendBuffer();
 }
 
 void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
-                                      const String &sw1Time, const String &sw2Time,
-                                      const String &sw3Time)
-{
-    if (!displayFound)
-        return;
+                                      const String &sw1Time,
+                                      const String &sw2Time,
+                                      const String &sw3Time) {
+  if (!displayFound)
+    return;
 
-    display.clearBuffer();
+  display.clearBuffer();
 
-    // Title
+  // Title
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawBox(0, 0, 64, 12);
+  display.setDrawColor(0);
+  display.drawStr(2, 2, "Switches");
+  display.setDrawColor(1);
+
+  // Function to draw switch status
+  auto drawSwitch = [&](int y, const char *name, bool state) {
     display.setFont(u8g2_font_profont10_tr);
-    display.drawBox(0, 0, 64, 12);
-    display.setDrawColor(0);
-    display.drawStr(2, 2, "Switches");
-    display.setDrawColor(1);
+    display.drawStr(0, y, name);
 
-    // Function to draw switch status
-    auto drawSwitch = [&](int y, const char *name, bool state)
-    {
-        display.setFont(u8g2_font_profont10_tr);
-        display.drawStr(0, y, name);
+    display.setFont(u8g2_font_7x14_tr);
+    if (state) {
+      display.drawBox(25, y - 1, 25, 14);
+      display.setDrawColor(0);
+      display.drawStr(27, y, "ON");
+      display.setDrawColor(1);
+    } else {
+      display.drawStr(27, y, "OFF");
+    }
+  };
 
-        display.setFont(u8g2_font_7x14_tr);
-        if (state)
-        {
-            display.drawBox(25, y - 1, 25, 14);
-            display.setDrawColor(0);
-            display.drawStr(27, y, "ON");
-            display.setDrawColor(1);
-        }
-        else
-        {
-            display.drawStr(27, y, "OFF");
-        }
-    };
+  // Draw all switches with more spacing due to larger font
+  drawSwitch(20, "SW 1:", switch1);
+  drawSwitch(40, "SW 2:", switch2);
+  drawSwitch(60, "SW 3:", switch3);
 
-    // Draw all switches with more spacing due to larger font
-    drawSwitch(20, "SW 1:", switch1);
-    drawSwitch(40, "SW 2:", switch2);
-    drawSwitch(60, "SW 3:", switch3);
-
-    display.sendBuffer();
+  display.sendBuffer();
 }
 
-void DisplayManager::showInfoPage()
-{
-    if (!displayFound)
-        return;
+void DisplayManager::showInfoPage() {
+  if (!displayFound)
+    return;
 
-    display.clearBuffer();
+  display.clearBuffer();
 
-    // Title
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawBox(0, 0, 64, 12);
-    display.setDrawColor(0);
-    display.drawStr(2, 2, "System Info");
-    display.setDrawColor(1);
+  // Title
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawBox(0, 0, 64, 12);
+  display.setDrawColor(0);
+  display.drawStr(2, 2, "System Info");
+  display.setDrawColor(1);
 
-    // Time
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 17, "Time:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 27);
-    display.print(timeSync->getCurrentTime()); // Get time directly from TimeSync
+  // Time
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 17, "Time:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 27);
+  display.print(timeSync.getCurrentTime()); // Get time directly from TimeSync
 
-    // WiFi Status
-    display.setFont(u8g2_font_profont10_tr);
-    display.drawStr(0, 45, "WiFi:");
-    display.setFont(u8g2_font_7x14_tr);
-    display.setCursor(0, 55);
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        display.print("Online");
+  // WiFi Status
+  display.setFont(u8g2_font_profont10_tr);
+  display.drawStr(0, 45, "WiFi:");
+  display.setFont(u8g2_font_7x14_tr);
+  display.setCursor(0, 55);
+  if (WiFi.status() == WL_CONNECTED) {
+    display.print("Online");
 
-        // IP Address with alternating backgrounds, no dots
-        display.setFont(u8g2_font_profont10_tr); // Slightly larger than 4x6
-        display.drawStr(0, 73, "IP:");
-        IPAddress ip = WiFi.localIP();
+    // IP Address with alternating backgrounds, no dots
+    display.setFont(u8g2_font_profont10_tr); // Slightly larger than 4x6
+    display.drawStr(0, 73, "IP:");
+    IPAddress ip = WiFi.localIP();
 
-        // Calculate positions with 5 pixels per character
-        const int charWidth = 5;
-        const int blockWidth = charWidth * 3 + 1; // Each block is 3 digits
-        const int startX = 0;
-        const int y = 83;
+    // Calculate positions with 5 pixels per character
+    const int charWidth = 5;
+    const int blockWidth = charWidth * 3 + 1; // Each block is 3 digits
+    const int startX = 0;
+    const int y = 83;
 
-        // Draw background blocks
-        for (int i = 0; i < 4; i++)
-        {
-            if (i % 2 == 1)
-            { // Alternate blocks
-                display.drawBox(startX + (i * blockWidth), y - 1, blockWidth, 10);
-            }
-        }
-
-        // Print numbers
-        display.setDrawColor(1); // Normal color for odd blocks
-        display.setCursor(startX, y);
-        display.printf("%03d", ip[0]);
-
-        display.setDrawColor(0); // Inverted for even blocks
-        display.setCursor(startX + blockWidth, y);
-        display.printf("%03d", ip[1]);
-
-        display.setDrawColor(1); // Back to normal
-        display.setCursor(startX + (blockWidth * 2), y);
-        display.printf("%03d", ip[2]);
-
-        display.setDrawColor(0); // Inverted for last block
-        display.setCursor(startX + (blockWidth * 3), y);
-        display.printf("%03d", ip[3]);
-
-        display.setDrawColor(1); // Reset to normal
-    }
-    else
-    {
-        display.print("Offline");
+    // Draw background blocks
+    for (int i = 0; i < 4; i++) {
+      if (i % 2 == 1) { // Alternate blocks
+        display.drawBox(startX + (i * blockWidth), y - 1, blockWidth, 10);
+      }
     }
 
-    display.sendBuffer();
+    // Print numbers
+    display.setDrawColor(1); // Normal color for odd blocks
+    display.setCursor(startX, y);
+    display.printf("%03d", ip[0]);
+
+    display.setDrawColor(0); // Inverted for even blocks
+    display.setCursor(startX + blockWidth, y);
+    display.printf("%03d", ip[1]);
+
+    display.setDrawColor(1); // Back to normal
+    display.setCursor(startX + (blockWidth * 2), y);
+    display.printf("%03d", ip[2]);
+
+    display.setDrawColor(0); // Inverted for last block
+    display.setCursor(startX + (blockWidth * 3), y);
+    display.printf("%03d", ip[3]);
+
+    display.setDrawColor(1); // Reset to normal
+  } else {
+    display.print("Offline");
+  }
+
+  display.sendBuffer();
 }
 
 void DisplayManager::updateDisplay(float importPower, float exportPower,
+                                   float totalImport, float totalExport,
                                    float temp, float humidity, float light,
                                    bool sw1, bool sw2, bool sw3,
-                                   const String &sw1Time, const String &sw2Time, const String &sw3Time)
-{
-    if (!displayFound)
-        return;
+                                   const String &sw1Time, const String &sw2Time,
+                                   const String &sw3Time) {
+  if (!displayFound)
+    return;
 
-    // Rotate pages every PAGE_DURATION milliseconds
-    if (millis() - lastPageChange >= PAGE_DURATION)
-    {
-        currentPage = (currentPage + 1) % 4; // Cycle through 4 pages
-        lastPageChange = millis();
-    }
+  // Rotate pages every PAGE_DURATION milliseconds
+  if (millis() - lastPageChange >= PAGE_DURATION) {
+    currentPage = (currentPage + 1) % 4; // Cycle through 4 pages
+    lastPageChange = millis();
+  } else {
+    return;
+  }
 
-    // Show current page
-    switch (currentPage)
-    {
-    case 0:
-        showPowerPage(importPower, exportPower);
-        break;
-    case 1:
-        showEnvironmentPage(temp, humidity, light);
-        break;
-    case 2:
-        showSwitchesPage(sw1, sw2, sw3, sw1Time, sw2Time, sw3Time);
-        break;
-    case 3:
-        showInfoPage(); // Now using the parameter-less version
-        break;
-    }
+  // Show current page
+  switch (currentPage) {
+  case 0:
+    showPowerPage(importPower, exportPower, totalImport, totalExport);
+    break;
+  case 1:
+    showEnvironmentPage(temp, humidity, light);
+    break;
+  case 2:
+    showSwitchesPage(sw1, sw2, sw3, sw1Time, sw2Time, sw3Time);
+    break;
+  case 3:
+    showInfoPage(); // Now using the parameter-less version
+    break;
+  }
 }
 -------------------
 // EnvironmentSensors.cpp
@@ -364,6 +386,8 @@ bool EnvironmentSensors::hasBH1750() const
 HomeP1Device::HomeP1Device(const char *ip) : baseUrl("http://" + String(ip)),
                                              lastImportPower(0),
                                              lastExportPower(0),
+                                             lastTotalImport(0),
+                                             lastTotalExport(0),
                                              lastReadTime(0),
                                              lastReadSuccess(false)
 {
@@ -395,7 +419,13 @@ bool HomeP1Device::getPowerData(float &importPower, float &exportPower)
         if (!error)
         {
             float power = doc["active_power_w"].as<float>();
+            lastTotalImport = doc["total_power_import_kwh"].as<float>();
+            lastTotalExport = doc["total_power_export_kwh"].as<float>();
+
             Serial.printf("Received P1 power data: %.2f W\n", power);
+            Serial.printf("Today total import: %.2f kWh\n", lastTotalImport);
+            Serial.printf("Today total export: %.2f kWh\n", lastTotalExport);
+
             importPower = max(power, 0);
             exportPower = max(-power, 0);
             http.end();
@@ -414,6 +444,16 @@ float HomeP1Device::getCurrentImport() const
 float HomeP1Device::getCurrentExport() const
 {
     return lastExportPower;
+}
+
+float HomeP1Device::getTotalImport() const
+{
+    return lastTotalImport;
+}
+
+float HomeP1Device::getTotalExport() const
+{
+    return lastTotalExport;
 }
 
 float HomeP1Device::getNetPower() const
@@ -652,17 +692,14 @@ unsigned long lastStateChangeTime[3] = {0, 0, 0};
 bool switchForceOff[3] = {false, false, false};
 unsigned long lastTimeDisplay = 0;
 
-bool loadConfiguration()
-{
-  if (!SPIFFS.begin(true))
-  {
+bool loadConfiguration() {
+  if (!SPIFFS.begin(true)) {
     Serial.println("Failed to mount SPIFFS");
     return false;
   }
 
   File configFile = SPIFFS.open("/config.json", "r");
-  if (!configFile)
-  {
+  if (!configFile) {
     Serial.println("Failed to open config file");
     return false;
   }
@@ -671,8 +708,7 @@ bool loadConfiguration()
   DeserializationError error = deserializeJson(doc, configFile);
   configFile.close();
 
-  if (error)
-  {
+  if (error) {
     Serial.println("Failed to parse config file");
     return false;
   }
@@ -694,47 +730,37 @@ bool loadConfiguration()
   return true;
 }
 
-void connectWiFi()
-{
+void connectWiFi() {
   Serial.println("Connecting to WiFi...");
   WiFi.begin(config.wifi_ssid.c_str(), config.wifi_password.c_str());
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20)
-  {
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
     Serial.print(".");
     attempts++;
   }
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
+  if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi connected");
     Serial.println("IP address: " + WiFi.localIP().toString());
-  }
-  else
-  {
+  } else {
     Serial.println("\nWiFi connection failed!");
   }
 }
 
-bool canChangeState(int switchIndex, bool newState)
-{
+bool canChangeState(int switchIndex, bool newState) {
   unsigned long currentTime = millis();
-  unsigned long timeSinceChange = currentTime - lastStateChangeTime[switchIndex];
+  unsigned long timeSinceChange =
+      currentTime - lastStateChangeTime[switchIndex];
 
-  if (newState)
-  { // Turning ON
-    if (switchForceOff[switchIndex] && timeSinceChange < config.min_off_time)
-    {
+  if (newState) { // Turning ON
+    if (switchForceOff[switchIndex] && timeSinceChange < config.min_off_time) {
       return false;
     }
     switchForceOff[switchIndex] = false;
-  }
-  else
-  { // Turning OFF
-    if (timeSinceChange < config.min_on_time)
-    {
+  } else { // Turning OFF
+    if (timeSinceChange < config.min_on_time) {
       return false;
     }
   }
@@ -742,12 +768,10 @@ bool canChangeState(int switchIndex, bool newState)
   return true;
 }
 
-void checkMaxOnTime()
-{
+void checkMaxOnTime() {
   unsigned long currentTime = millis();
 
-  for (int i = 0; i < 3; i++)
-  {
+  for (int i = 0; i < 3; i++) {
     bool currentState = false;
     if (i == 0 && socket1)
       currentState = socket1->getCurrentState();
@@ -756,8 +780,8 @@ void checkMaxOnTime()
     if (i == 2 && socket3)
       currentState = socket3->getCurrentState();
 
-    if (currentState && (currentTime - lastStateChangeTime[i]) > config.max_on_time)
-    {
+    if (currentState &&
+        (currentTime - lastStateChangeTime[i]) > config.max_on_time) {
       if (i == 0 && socket1)
         socket1->setState(false);
       if (i == 1 && socket2)
@@ -770,8 +794,7 @@ void checkMaxOnTime()
   }
 }
 
-void updateSwitch1Logic()
-{
+void updateSwitch1Logic() {
   if (!socket1 || !p1Meter)
     return;
 
@@ -779,24 +802,19 @@ void updateSwitch1Logic()
   bool currentState = socket1->getCurrentState();
   bool newState = currentState;
 
-  if (exportPower > config.power_on_threshold && !currentState)
-  {
+  if (exportPower > config.power_on_threshold && !currentState) {
     newState = true;
-  }
-  else if (exportPower < config.power_off_threshold && currentState)
-  {
+  } else if (exportPower < config.power_off_threshold && currentState) {
     newState = false;
   }
 
-  if (newState != currentState && canChangeState(0, newState))
-  {
+  if (newState != currentState && canChangeState(0, newState)) {
     socket1->setState(newState);
     lastStateChangeTime[0] = millis();
   }
 }
 
-void updateSwitch2Logic()
-{
+void updateSwitch2Logic() {
   if (!socket2)
     return;
 
@@ -807,24 +825,19 @@ void updateSwitch2Logic()
   bool newState = currentState;
 
   // After 17:45 and light < 75 lux
-  if (hour >= 17 && minute >= 45 && light < 75)
-  {
+  if (hour >= 17 && minute >= 45 && light < 75) {
     newState = true;
-  }
-  else if (light >= 75)
-  {
+  } else if (light >= 75) {
     newState = false;
   }
 
-  if (newState != currentState && canChangeState(1, newState))
-  {
+  if (newState != currentState && canChangeState(1, newState)) {
     socket2->setState(newState);
     lastStateChangeTime[1] = millis();
   }
 }
 
-void updateSwitch3Logic()
-{
+void updateSwitch3Logic() {
   if (!socket3)
     return;
 
@@ -835,29 +848,23 @@ void updateSwitch3Logic()
   bool newState = currentState;
 
   // After 17:30 and light < 50 lux
-  if (hour >= 17 && minute >= 30 && light < 50)
-  {
+  if (hour >= 17 && minute >= 30 && light < 50) {
     newState = true;
-  }
-  else if (light >= 50)
-  {
+  } else if (light >= 50) {
     newState = false;
   }
 
-  if (newState != currentState && canChangeState(2, newState))
-  {
+  if (newState != currentState && canChangeState(2, newState)) {
     socket3->setState(newState);
     lastStateChangeTime[2] = millis();
   }
 }
 
-void updateDisplay()
-{
+void updateDisplay() {
   if (!p1Meter)
     return;
   unsigned long currentMillis = millis();
-  if (currentMillis - lastTimeDisplay >= 1000)
-  {
+  if (currentMillis - lastTimeDisplay >= 1000) {
     int hour, minute;
     timeSync.getCurrentHourMinute(hour, minute);
     Serial.printf("Current time: %02d:%02d\n", hour, minute);
@@ -869,89 +876,71 @@ void updateDisplay()
   String sw2Time = String((unsigned long)(millis() - lastStateChangeTime[1]));
   String sw3Time = String((unsigned long)(millis() - lastStateChangeTime[2]));
 
-  display.updateDisplay(
-      p1Meter->getCurrentImport(),
-      p1Meter->getCurrentExport(),
-      sensors.getTemperature(),
-      sensors.getHumidity(),
-      sensors.getLightLevel(),
-      socket1 ? socket1->getCurrentState() : false,
-      socket2 ? socket2->getCurrentState() : false,
-      socket3 ? socket3->getCurrentState() : false,
-      sw1Time,
-      sw2Time,
-      sw3Time);
+  display.updateDisplay(p1Meter->getCurrentImport(),
+                        p1Meter->getCurrentExport(), p1Meter->getTotalImport(),
+                        p1Meter->getTotalExport(), sensors.getTemperature(),
+                        sensors.getHumidity(), sensors.getLightLevel(),
+                        socket1 ? socket1->getCurrentState() : false,
+                        socket2 ? socket2->getCurrentState() : false,
+                        socket3 ? socket3->getCurrentState() : false,
+                        String(millis() - lastStateChangeTime[0]),
+                        String(millis() - lastStateChangeTime[1]),
+                        String(millis() - lastStateChangeTime[2]));
 }
-void setup()
-{
+
+void setup() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
 
   Serial.begin(115200);
 
-  if (config.phone_ip != "" && config.phone_ip != "0" && config.phone_ip != "null")
-  {
+  if (config.phone_ip != "" && config.phone_ip != "0" &&
+      config.phone_ip != "null") {
     phoneCheck = new NetworkCheck(config.phone_ip.c_str());
     Serial.println("Phone check initialized at: " + config.phone_ip);
   }
 
-  if (!SPIFFS.begin(true))
-  {
+  if (!SPIFFS.begin(true)) {
     Serial.println("SPIFFS Mount Failed");
     Serial.println("Trying to format SPIFFS...");
-    if (SPIFFS.format())
-    {
+    if (SPIFFS.format()) {
       Serial.println("SPIFFS formatted successfully");
-      if (SPIFFS.begin(true))
-      {
+      if (SPIFFS.begin(true)) {
         Serial.println("SPIFFS mounted successfully after format");
-      }
-      else
-      {
+      } else {
         Serial.println("SPIFFS mount failed even after format");
       }
-    }
-    else
-    {
+    } else {
       Serial.println("SPIFFS format failed");
     }
-  }
-  else
-  {
+  } else {
     Serial.println("SPIFFS mounted successfully");
   }
 
-  if (!loadConfiguration())
-  {
+  if (!loadConfiguration()) {
     Serial.println("Using default configuration");
   }
 
   Wire.setClock(100000);
   Wire.begin();
 
-  if (display.begin())
-  {
+  if (display.begin()) {
     Serial.println("Display initialized successfully");
-  }
-  else
-  {
+  } else {
     Serial.println("Display not connected or initialization failed!");
   }
 
-  if (sensors.begin())
-  {
+  if (sensors.begin()) {
     Serial.println("Environmental sensors initialized successfully");
-  }
-  else
-  {
-    Serial.println("Environmental sensors not connected or initialization failed!");
+  } else {
+    Serial.println(
+        "Environmental sensors not connected or initialization failed!");
   }
 
   connectWiFi();
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
+  if (WiFi.status() == WL_CONNECTED) {
     Serial.println("Config values:");
     Serial.println("P1 IP: " + config.p1_ip);
     Serial.println("Socket 1: " + config.socket_1);
@@ -959,26 +948,25 @@ void setup()
     Serial.println("Socket 3: " + config.socket_3);
     Serial.println("Phone IP:" + config.phone_ip);
 
-    if (config.p1_ip != "" && config.p1_ip != "0" && config.p1_ip != "null")
-    {
+    if (config.p1_ip != "" && config.p1_ip != "0" && config.p1_ip != "null") {
       p1Meter = new HomeP1Device(config.p1_ip.c_str());
       Serial.println("P1 Meter initialized at: " + config.p1_ip);
     }
 
-    if (config.socket_1 != "" && config.socket_1 != "0" && config.socket_1 != "null")
-    {
+    if (config.socket_1 != "" && config.socket_1 != "0" &&
+        config.socket_1 != "null") {
       socket1 = new HomeSocketDevice(config.socket_1.c_str());
       Serial.println("Socket 1 initialized at: " + config.socket_1);
     }
 
-    if (config.socket_2 != "" && config.socket_2 != "0" && config.socket_2 != "null")
-    {
+    if (config.socket_2 != "" && config.socket_2 != "0" &&
+        config.socket_2 != "null") {
       socket2 = new HomeSocketDevice(config.socket_2.c_str());
       Serial.println("Socket 2 initialized at: " + config.socket_2);
     }
 
-    if (config.socket_3 != "" && config.socket_3 != "0" && config.socket_3 != "null")
-    {
+    if (config.socket_3 != "" && config.socket_3 != "0" &&
+        config.socket_3 != "null") {
       socket3 = new HomeSocketDevice(config.socket_3.c_str());
       Serial.println("Socket 3 initialized at: " + config.socket_3);
     }
@@ -991,13 +979,12 @@ void setup()
   unsigned long startTime = millis();
 }
 
-void reconnectWiFi()
-{
+void reconnectWiFi() {
   unsigned long currentMillis = millis();
 
   if (WiFi.status() != WL_CONNECTED &&
-      (currentMillis - timing.lastWiFiCheck >= timing.WIFI_CHECK_INTERVAL || timing.lastWiFiCheck == 0))
-  {
+      (currentMillis - timing.lastWiFiCheck >= timing.WIFI_CHECK_INTERVAL ||
+       timing.lastWiFiCheck == 0)) {
     Serial.println("Reconnecting to WiFi...");
     WiFi.disconnect();
     WiFi.begin(config.wifi_ssid.c_str(), config.wifi_password.c_str());
@@ -1005,166 +992,206 @@ void reconnectWiFi()
   }
 }
 
-void loop()
-{
+static int yesterday;
+static uint8_t operationOrder = 0;
+
+void loop() {
   unsigned long currentMillis = millis();
 
-  // WiFi check first
-  reconnectWiFi();
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    return;
-  }
-
   // Use static counter to sequence ALL operations
-  static uint8_t operationOrder = 0;
 
-  switch (operationOrder)
-  {
-  case 0: // Environmental sensor (I2C) - Temperature/Humidity
-    if (currentMillis - timing.lastEnvSensorUpdate >= timing.ENV_SENSOR_INTERVAL)
-    {
-      sensors.update(); // Assuming this method exists, if not we use sensors.update()
+  File file;
+
+  switch (operationOrder) {
+  case 0:
+    file = SPIFFS.open("/daily_totals.json", "r");
+    if (file) {
+      StaticJsonDocument<128> doc;
+      DeserializationError error = deserializeJson(doc, file);
+      file.close();
+
+      if (!error) {
+        config.yesterday = doc["day"] | 0;
+        config.yesterdayImport = doc["import"] | 0.0f;
+        config.yesterdayExport = doc["export"] | 0.0f;
+
+        Serial.println("\nLoaded previous day totals:");
+        Serial.printf("Day: %d\n", config.yesterday);
+        Serial.printf("Import: %.2f kWh\n", config.yesterdayImport);
+        Serial.printf("Export: %.2f kWh\n", config.yesterdayExport);
+      } else {
+        Serial.println("Error parsing daily totals file");
+        config.yesterday = 0;
+        config.yesterdayImport = 0;
+        config.yesterdayExport = 0;
+      }
+    } else {
+      Serial.println("No previous day totals found");
+      config.yesterday = 0;
+      config.yesterdayImport = 0;
+      config.yesterdayExport = 0;
+    }
+    operationOrder = 5;
+    break;
+
+  case 5: // Environmental sensor (I2C) - Temperature/Humidity
+    if (currentMillis - timing.lastEnvSensorUpdate >=
+        timing.ENV_SENSOR_INTERVAL) {
+      sensors.update(); // Assuming this method exists, if not we use
+                        // sensors.update()
       timing.lastEnvSensorUpdate = currentMillis;
-      operationOrder = 1;
+      operationOrder = 10;
       yield();
       delay(1);
     }
     break;
 
-  case 1: // Light sensor (I2C)
-    if (currentMillis - timing.lastLightSensorUpdate >= timing.LIGHT_SENSOR_INTERVAL)
-    {
-      sensors.update(); // Assuming this method exists, if not we use sensors.update()
+  case 10:
+    if (WiFi.status() != WL_CONNECTED) {
+      reconnectWiFi();
+      yield();
+      delay(5000);
+      operationOrder = 10; // Go back to start if no WiFi
+    } else {
+      operationOrder = 12;
+    }
+    break;
+
+  case 12: // Light sensor (I2C)
+    if (currentMillis - timing.lastLightSensorUpdate >=
+        timing.LIGHT_SENSOR_INTERVAL) {
+      sensors.update(); // Assuming this method exists, if not we use
+                        // sensors.update()
       timing.lastLightSensorUpdate = currentMillis;
-      operationOrder = 2;
+      operationOrder = 20;
       yield();
       delay(1);
     }
     break;
 
-  case 2: // Display update (I2C)
-    if (currentMillis - timing.lastDisplayUpdate >= timing.DISPLAY_INTERVAL)
-    {
+  case 20: // Display update (I2C)
+    if (currentMillis - timing.lastDisplayUpdate >= timing.DISPLAY_INTERVAL) {
       updateDisplay();
       timing.lastDisplayUpdate = currentMillis;
-      operationOrder = 3;
+      operationOrder = 30;
       yield();
       delay(1);
     }
     break;
 
-  case 3: // P1 meter (Network)
-    if (p1Meter && (currentMillis - timing.lastP1Update >= timing.P1_INTERVAL))
-    {
+  case 30: // P1 meter (Network)
+    if (p1Meter &&
+        (currentMillis - timing.lastP1Update >= timing.P1_INTERVAL)) {
       p1Meter->update();
       timing.lastP1Update = currentMillis;
-      operationOrder = 4;
+      operationOrder = 40;
       yield();
       delay(50);
-    }
-    else
-    {
-      operationOrder = 4;
+    } else {
+      operationOrder = 40;
     }
     break;
 
-  case 4: // Socket 1 (Network)
-    if (socket1 && (currentMillis - timing.lastSocket1Update >= timing.SOCKET_INTERVAL))
-    {
+  case 40: // Socket 1 (Network)
+    if (socket1 &&
+        (currentMillis - timing.lastSocket1Update >= timing.SOCKET_INTERVAL)) {
       socket1->update();
       timing.lastSocket1Update = currentMillis;
-      if (p1Meter)
-      {
+      if (p1Meter) {
         updateSwitch1Logic();
       }
-      operationOrder = 5;
+      operationOrder = 50;
       yield();
       delay(50);
-    }
-    else
-    {
-      operationOrder = 5;
+    } else {
+      operationOrder = 50;
     }
     break;
 
-  case 5: // Socket 2 (Network)
-    if (socket2 && (currentMillis - timing.lastSocket2Update >= timing.SOCKET_INTERVAL))
-    {
+  case 50: // Socket 2 (Network)
+    if (socket2 &&
+        (currentMillis - timing.lastSocket2Update >= timing.SOCKET_INTERVAL)) {
       socket2->update();
       timing.lastSocket2Update = currentMillis;
       updateSwitch2Logic();
-      operationOrder = 6;
+      operationOrder = 60;
       yield();
       delay(50);
-    }
-    else
-    {
-      operationOrder = 6;
+    } else {
+      operationOrder = 60;
     }
     break;
 
-  case 6: // Socket 3 (Network)
-    if (socket3 && (currentMillis - timing.lastSocket3Update >= timing.SOCKET_INTERVAL))
-    {
+  case 60: // Socket 3 (Network)
+    if (socket3 &&
+        (currentMillis - timing.lastSocket3Update >= timing.SOCKET_INTERVAL)) {
       socket3->update();
       timing.lastSocket3Update = currentMillis;
       updateSwitch3Logic();
-      operationOrder = 7;
+      operationOrder = 70;
       yield();
       delay(50);
-    }
-    else
-    {
-      operationOrder = 7;
+    } else {
+      operationOrder = 70;
     }
     break;
 
-  case 7: // Max on time check (no I2C or network)
+  case 70: // Max on time check (no I2C or network)
     checkMaxOnTime();
-    operationOrder = 8;
+    operationOrder = 80;
     break;
 
-  case 8: // Web server (Network)
+  case 80: // Web server (Network)
     webServer.update();
-    operationOrder = 9; // Back to start
+    operationOrder = 90; // Back to start
     yield();
     break;
 
-  case 9: // Phone presence check
-    if (phoneCheck && (currentMillis - timing.lastPhoneCheck >= timing.PHONE_CHECK_INTERVAL))
-    {
-      if (phoneCheck->isDevicePresent())
-      {
+  case 90: // Phone presence check
+    if (phoneCheck && (currentMillis - timing.lastPhoneCheck >=
+                       timing.PHONE_CHECK_INTERVAL)) {
+      if (phoneCheck->isDevicePresent()) {
         Serial.println("Phone is detected");
         // Add your logic for when phone is present
-      }
-      else
-      {
+      } else {
         Serial.println("Phone is not detected");
         // Add your logic for when phone is absent
       }
       timing.lastPhoneCheck = currentMillis;
-      operationOrder = 0; // Go back to start
+      operationOrder = 100;
       yield();
       delay(50); // Give some time between network operations
+    } else {
+      operationOrder = 100;
     }
-    else
-    {
-      operationOrder = 0;
+    break;
+
+  case 100: // check if its a new doy to save and store past day totals
+  {
+    int day = timeSync.getTime().dayOfYear;
+    if (day != yesterday) {
+      yesterday = day;
+      StaticJsonDocument<128> doc;
+      doc["day"] = day;
+      doc["import"] = p1Meter->getTotalImport();
+      doc["export"] = p1Meter->getTotalExport();
+
+      File file = SPIFFS.open("/daily_totals.json", "w");
+      if (file) {
+        serializeJson(doc, file);
+        file.close();
+        Serial.printf("Saved day %d totals to SPIFFS\n", day);
+      }
     }
+    operationOrder = 5;
+    break;
+  }
+  default:
+    Serial.printf("ERROR: Invalid operation order: %d\n", operationOrder);
+    operationOrder = 5; // Reset to beginning
     break;
   }
 }
-
-//  TimeSync::TimeData time = timeSync.getTime();
-//  if (time.dayOfWeek == 7)
-//    { // Sunday
-//    if (time.dayOfWeek >= 6)
-//    { // Weekend (Sat-Sun)
-//      if (time.dayOfWeek <= 5)
-//      { // Weekday (Mon-Fri)
 -------------------
 **Some C++ reminders of the C++ syntax and concepts used in the code:**
 -----
@@ -1872,6 +1899,8 @@ TimeSync::TimeData TimeSync::getTime()
         t.hour = timeinfo.tm_hour;
         t.minute = timeinfo.tm_min;
         t.weekNum = ((timeinfo.tm_yday + 7 - timeinfo.tm_wday) / 7) + 1;
+        // day of the year
+        t.dayOfYear = timeinfo.tm_yday;
     }
     else
     {
@@ -2527,7 +2556,7 @@ private:
     unsigned long lastPageChange = 0;
     const unsigned long PAGE_DURATION = 500;
 
-    void showPowerPage(float importPower, float exportPower);
+    void showPowerPage(float importPower, float exportPower, float totalImport, float totalExport);
     void showEnvironmentPage(float temp, float humidity, float light);
     void showSwitchesPage(bool switch1, bool switch2, bool switch3,
                           const String &sw1Time, const String &sw2Time, const String &sw3Time);
@@ -2538,7 +2567,7 @@ public:
     bool begin();
 
     // Basic display update (without info page)
-    void updateDisplay(float importPower, float exportPower,
+    void updateDisplay(float importPower, float exportPower, float totalImport, float totalExport,
                        float temp, float humidity, float light,
                        bool sw1, bool sw2, bool sw3,
                        const String &sw1Time, const String &sw2Time, const String &sw3Time);
@@ -2613,6 +2642,11 @@ struct Config
     String socket_2;
     String socket_3;
     String phone_ip;
+
+    float yesterdayImport;
+    float yesterdayExport;
+    int yesterday;
+
     float power_on_threshold;
     float power_off_threshold;
     unsigned long min_on_time;
@@ -2664,6 +2698,10 @@ private:
     String baseUrl;
     float lastImportPower;
     float lastExportPower;
+
+    float lastTotalImport;
+    float lastTotalExport;
+
     unsigned long lastReadTime;
     const unsigned long READ_INTERVAL = 1000;
     const unsigned long HTTP_TIMEOUT = 5000;
@@ -2678,6 +2716,8 @@ public:
     float getCurrentExport() const;
     float getNetPower() const;
     bool isConnected() const;
+    float getTotalImport() const;
+    float getTotalExport() const;
 };
 
 #endif
@@ -2980,6 +3020,7 @@ public:
         int weekNum;   // 1-53
         int hour;      // 0-23
         int minute;    // 0-59
+        int dayOfYear; // 0-365
     };
     TimeData getTime(); // One function to get everything
 };

@@ -15,6 +15,10 @@ private:
     String baseUrl;
     float lastImportPower;
     float lastExportPower;
+
+    float lastTotalImport;
+    float lastTotalExport;
+
     unsigned long lastReadTime;
     const unsigned long READ_INTERVAL = 1000;
     const unsigned long HTTP_TIMEOUT = 5000;
@@ -29,6 +33,8 @@ public:
     float getCurrentExport() const;
     float getNetPower() const;
     bool isConnected() const;
+    float getTotalImport() const;
+    float getTotalExport() const;
 };
 
 #endif

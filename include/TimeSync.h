@@ -39,6 +39,7 @@ public:
         int weekNum;   // 1-53
         int hour;      // 0-23
         int minute;    // 0-59
+        int dayOfYear; // 0-365
     };
     TimeData getTime(); // One function to get everything
 };

@@ -4,6 +4,8 @@
 HomeP1Device::HomeP1Device(const char *ip) : baseUrl("http://" + String(ip)),
                                              lastImportPower(0),
                                              lastExportPower(0),
+                                             lastTotalImport(0),
+                                             lastTotalExport(0),
                                              lastReadTime(0),
                                              lastReadSuccess(false)
 {
@@ -35,7 +37,13 @@ bool HomeP1Device::getPowerData(float &importPower, float &exportPower)
         if (!error)
         {
             float power = doc["active_power_w"].as<float>();
+            lastTotalImport = doc["total_power_import_kwh"].as<float>();
+            lastTotalExport = doc["total_power_export_kwh"].as<float>();
+
             Serial.printf("Received P1 power data: %.2f W\n", power);
+            Serial.printf("Today total import: %.2f kWh\n", lastTotalImport);
+            Serial.printf("Today total export: %.2f kWh\n", lastTotalExport);
+
             importPower = max(power, 0);
             exportPower = max(-power, 0);
             http.end();
@@ -54,6 +62,16 @@ float HomeP1Device::getCurrentImport() const
 float HomeP1Device::getCurrentExport() const
 {
     return lastExportPower;
+}
+
+float HomeP1Device::getTotalImport() const
+{
+    return lastTotalImport;
+}
+
+float HomeP1Device::getTotalExport() const
+{
+    return lastTotalExport;
 }
 
 float HomeP1Device::getNetPower() const
