@@ -497,12 +497,33 @@ void loop() {
       break;
     }
 
-    static int lastSavedDay = config.yesterday; // Keep track of last saved day
+    static int lastSavedDay = config.yesterday;
     int currentDay = timeSync.getTime().dayOfYear;
 
-    // Only save if it's a new day and we haven't saved for this day yet
-    if (currentDay != lastSavedDay && timeSync.getTime().hour == 0 &&
-        timeSync.getTime().minute == 0) {
+    if (lastSavedDay == 0) {
+      lastSavedDay = currentDay;
+      config.yesterday = currentDay;
+      config.yesterdayImport = p1Meter->getTotalImport();
+      config.yesterdayExport = p1Meter->getTotalExport();
+
+      // Save initial values
+      StaticJsonDocument<128> doc;
+      doc["day"] = currentDay;
+      doc["import"] = config.yesterdayImport;
+      doc["export"] = config.yesterdayExport;
+
+      File file = SPIFFS.open("/daily_totals.json", "w");
+      if (file) {
+        serializeJson(doc, file);
+        file.close();
+        Serial.printf(
+            "Initialized day totals - Day: %d, Import: %.3f, Export: %.3f\n",
+            currentDay, config.yesterdayImport, config.yesterdayExport);
+      }
+    }
+
+    // Only check for day change - remove the exact midnight check
+    if (currentDay != lastSavedDay) {
       StaticJsonDocument<128> doc;
       doc["day"] = currentDay;
       doc["import"] = p1Meter->getTotalImport();
@@ -521,8 +542,6 @@ void loop() {
         config.yesterdayImport = doc["import"].as<float>();
         config.yesterdayExport = doc["export"].as<float>();
         lastSavedDay = currentDay;
-      } else {
-        Serial.println("Failed to open daily_totals.json for writing");
       }
     }
     operationOrder = 5;

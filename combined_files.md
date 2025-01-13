@@ -1050,8 +1050,9 @@ void loop() {
     if (WiFi.status() != WL_CONNECTED) {
       reconnectWiFi();
       yield();
-      delay(5000);
-      operationOrder = 10; // Go back to start if no WiFi
+      delay(8000);
+      reconnectWiFi();
+      // operationOrder = 10; // Go back to start if no WiFi
     } else {
       operationOrder = 12;
     }
@@ -1166,13 +1167,20 @@ void loop() {
     }
     break;
 
-  case 100: // check if its a new doy to save and store past day totals
-  {
-    int day = timeSync.getTime().dayOfYear;
-    if (day != yesterday) {
-      yesterday = day;
+  case 100: {
+    if (!p1Meter) {
+      operationOrder = 5;
+      break;
+    }
+
+    static int lastSavedDay = config.yesterday; // Keep track of last saved day
+    int currentDay = timeSync.getTime().dayOfYear;
+
+    // Only save if it's a new day and we haven't saved for this day yet
+    if (currentDay != lastSavedDay && timeSync.getTime().hour == 0 &&
+        timeSync.getTime().minute == 0) {
       StaticJsonDocument<128> doc;
-      doc["day"] = day;
+      doc["day"] = currentDay;
       doc["import"] = p1Meter->getTotalImport();
       doc["export"] = p1Meter->getTotalExport();
 
@@ -1180,7 +1188,17 @@ void loop() {
       if (file) {
         serializeJson(doc, file);
         file.close();
-        Serial.printf("Saved day %d totals to SPIFFS\n", day);
+        Serial.printf("Saved day %d totals to SPIFFS:\n", currentDay);
+        Serial.printf("Import: %.2f kWh\n", doc["import"].as<float>());
+        Serial.printf("Export: %.2f kWh\n", doc["export"].as<float>());
+
+        // Update config values and lastSavedDay
+        config.yesterday = currentDay;
+        config.yesterdayImport = doc["import"].as<float>();
+        config.yesterdayExport = doc["export"].as<float>();
+        lastSavedDay = currentDay;
+      } else {
+        Serial.println("Failed to open daily_totals.json for writing");
       }
     }
     operationOrder = 5;

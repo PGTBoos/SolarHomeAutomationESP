@@ -69,7 +69,7 @@ void DisplayManager::showPowerPage(float importPower, float exportPower,
   display.setCursor(0, 55);
   display.print(formatPower(exportPower));
 
-  display.setFont(u8g2_font_profont10_tr);
+  display.setFont(u8g2_font_helvR08_tn);
   display.drawStr(0, 73, "Total:");
 
   // daily import and export
@@ -82,13 +82,13 @@ void DisplayManager::showPowerPage(float importPower, float exportPower,
 
   // Daily import (used)
   display.setFont(u8g2_font_profont10_tr);
-  String totalImportStr = "-" + formatPower(dailyImport);
+  String totalImportStr = "-" + String(dailyImport, 1) + " kWh";
   int totalWidth = display.getStrWidth(totalImportStr.c_str());
   display.setCursor(64 - totalWidth, 83);
   display.print(totalImportStr);
 
   // Daily export (produced)
-  String totalExportStr = "+" + formatPower(dailyExport);
+  String totalExportStr = "+" + String(dailyExport, 1) + " kWh";
   totalWidth = display.getStrWidth(totalExportStr.c_str());
   display.setCursor(64 - totalWidth, 93);
   display.print(totalExportStr);
