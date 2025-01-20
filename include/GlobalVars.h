@@ -6,14 +6,13 @@
 #include "HomeSocketDevice.h"
 #include "EnvironmentSensor.h"
 #include "TimeSync.h"
+#include "RulesEngine.h"
 #include "DisplayManager.h"
 #include "NetworkCheck.h"
 
 // External variable declarations
 extern HomeP1Device *p1Meter;
-extern HomeSocketDevice *socket1;
-extern HomeSocketDevice *socket2;
-extern HomeSocketDevice *socket3;
+extern SimpleRuleEngine ruleEngine;
 extern unsigned long lastStateChangeTime[3];
 extern EnvironmentSensors sensors; // Make sure this matches your actual class name
 extern DisplayManager display;
@@ -59,9 +58,7 @@ struct TimingControl
     unsigned long lastLightSensorUpdate = 0;
     unsigned long lastDisplayUpdate = 0;
     unsigned long lastP1Update = 0;
-    unsigned long lastSocket1Update = 0;
-    unsigned long lastSocket2Update = 0;
-    unsigned long lastSocket3Update = 0;
+    unsigned long lastSocketUpdate = 0; // for a time interval to update the socket array (as group) each socket will have individual timers too
     unsigned long lastWiFiCheck = 0;
     unsigned long lastPhoneCheck = 0;
 };

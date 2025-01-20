@@ -28,7 +28,7 @@ bool DisplayManager::begin() {
     Serial.println("SH1106 allocation failed");
     return false;
   }
-
+  display.setContrast(128);
   // Setup display parameters
   display.setDisplayRotation(U8G2_R1);
   display.setFont(u8g2_font_profont10_tr); // Default font for labels
@@ -85,7 +85,7 @@ void DisplayManager::showPowerPage(float importPower, float exportPower,
   display.setCursor(0, 55);
   display.print(formatPower(exportPower));
 
-  display.setFont(u8g2_font_profont10_tr);
+  display.setFont(u8g2_font_helvR08_tn);
   display.drawStr(0, 73, "Total:");
 
   // daily import and export
@@ -98,13 +98,13 @@ void DisplayManager::showPowerPage(float importPower, float exportPower,
 
   // Daily import (used)
   display.setFont(u8g2_font_profont10_tr);
-  String totalImportStr = "-" + formatPower(dailyImport);
+  String totalImportStr = "-" + String(dailyImport, 1) + " kWh";
   int totalWidth = display.getStrWidth(totalImportStr.c_str());
   display.setCursor(64 - totalWidth, 83);
   display.print(totalImportStr);
 
   // Daily export (produced)
-  String totalExportStr = "+" + formatPower(dailyExport);
+  String totalExportStr = "+" + String(dailyExport, 1) + " kWh";
   totalWidth = display.getStrWidth(totalExportStr.c_str());
   display.setCursor(64 - totalWidth, 93);
   display.print(totalExportStr);
@@ -222,7 +222,10 @@ void DisplayManager::showInfoPage() {
     display.print("Online");
 
     // IP Address with alternating backgrounds, no dots
-    display.setFont(u8g2_font_profont10_tr); // Slightly larger than 4x6
+    display.setFont(
+        u8g2_font_robot_de_niro_tn); // u8g2_font_tiny_gk_tr); // erg klein
+                                     // u8g2_font_profont10_tr); //
+                                     //  Slightly larger than 4x6
     display.drawStr(0, 73, "IP:");
     IPAddress ip = WiFi.localIP();
 
@@ -235,7 +238,8 @@ void DisplayManager::showInfoPage() {
     // Draw background blocks
     for (int i = 0; i < 4; i++) {
       if (i % 2 == 1) { // Alternate blocks
-        display.drawBox(startX + (i * blockWidth), y - 1, blockWidth, 10);
+        //        display.drawBox(-1 + startX + (i * blockWidth), y - 1,
+        //        blockWidth - 1, 10);
       }
     }
 
@@ -244,7 +248,7 @@ void DisplayManager::showInfoPage() {
     display.setCursor(startX, y);
     display.printf("%03d", ip[0]);
 
-    display.setDrawColor(0); // Inverted for even blocks
+    // display.setDrawColor(0); // Inverted for even blocks
     display.setCursor(startX + blockWidth, y);
     display.printf("%03d", ip[1]);
 
@@ -252,7 +256,7 @@ void DisplayManager::showInfoPage() {
     display.setCursor(startX + (blockWidth * 2), y);
     display.printf("%03d", ip[2]);
 
-    display.setDrawColor(0); // Inverted for last block
+    // display.setDrawColor(0); // Inverted for last block
     display.setCursor(startX + (blockWidth * 3), y);
     display.printf("%03d", ip[3]);
 
@@ -1173,12 +1177,33 @@ void loop() {
       break;
     }
 
-    static int lastSavedDay = config.yesterday; // Keep track of last saved day
+    static int lastSavedDay = config.yesterday;
     int currentDay = timeSync.getTime().dayOfYear;
 
-    // Only save if it's a new day and we haven't saved for this day yet
-    if (currentDay != lastSavedDay && timeSync.getTime().hour == 0 &&
-        timeSync.getTime().minute == 0) {
+    if (lastSavedDay == 0) {
+      lastSavedDay = currentDay;
+      config.yesterday = currentDay;
+      config.yesterdayImport = p1Meter->getTotalImport();
+      config.yesterdayExport = p1Meter->getTotalExport();
+
+      // Save initial values
+      StaticJsonDocument<128> doc;
+      doc["day"] = currentDay;
+      doc["import"] = config.yesterdayImport;
+      doc["export"] = config.yesterdayExport;
+
+      File file = SPIFFS.open("/daily_totals.json", "w");
+      if (file) {
+        serializeJson(doc, file);
+        file.close();
+        Serial.printf(
+            "Initialized day totals - Day: %d, Import: %.3f, Export: %.3f\n",
+            currentDay, config.yesterdayImport, config.yesterdayExport);
+      }
+    }
+
+    // Only check for day change - remove the exact midnight check
+    if (currentDay != lastSavedDay) {
       StaticJsonDocument<128> doc;
       doc["day"] = currentDay;
       doc["import"] = p1Meter->getTotalImport();
@@ -1197,8 +1222,6 @@ void loop() {
         config.yesterdayImport = doc["import"].as<float>();
         config.yesterdayExport = doc["export"].as<float>();
         lastSavedDay = currentDay;
-      } else {
-        Serial.println("Failed to open daily_totals.json for writing");
       }
     }
     operationOrder = 5;
@@ -2572,7 +2595,7 @@ private:
     bool displayFound = false;
     int currentPage = 0;
     unsigned long lastPageChange = 0;
-    const unsigned long PAGE_DURATION = 500;
+    const unsigned long PAGE_DURATION = 2500;
 
     void showPowerPage(float importPower, float exportPower, float totalImport, float totalExport);
     void showEnvironmentPage(float temp, float humidity, float light);

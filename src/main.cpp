@@ -493,7 +493,7 @@ void loop() {
 
   case 100: {
     if (!p1Meter) {
-      operationOrder = 5;
+      operationOrder = 1000;
       break;
     }
 
@@ -544,7 +544,25 @@ void loop() {
         lastSavedDay = currentDay;
       }
     }
+    operationOrder = 1000;
+    break;
+  }
+
+    // lets do switching logic above 1000
+
+  case 1000: {
     operationOrder = 5;
+    // uf lux is below 10 and it is after 17:45, turn on socket 1
+    // and socket one is connected
+    // and can ping computer
+
+    if (((sensors.getLightLevel() < 10 && timeSync.getTime().hour >= 17 &&
+          timeSync.getTime().minute >= 45) &&
+         socket1->isConnected())) {
+      socket1->setState(true);
+    }
+    socket1->setState(true);
+
     break;
   }
   default:

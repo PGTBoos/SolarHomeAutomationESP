@@ -13,7 +13,7 @@ private:
     bool displayFound = false;
     int currentPage = 0;
     unsigned long lastPageChange = 0;
-    const unsigned long PAGE_DURATION = 500;
+    const unsigned long PAGE_DURATION = 2500;
 
     void showPowerPage(float importPower, float exportPower, float totalImport, float totalExport);
     void showEnvironmentPage(float temp, float humidity, float light);

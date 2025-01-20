@@ -6,6 +6,7 @@
     "socket_2": "192.168.178.175",
     "socket_3": "192.168.178.178",
     "phone_ip": "192.168.178.199",
+    "PC_ip": "192.168.178.200",
     "power_on_threshold": 1000,
     "power_off_threshold": 990,
     "min_on_time": 300,

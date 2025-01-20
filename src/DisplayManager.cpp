@@ -12,7 +12,7 @@ bool DisplayManager::begin() {
     Serial.println("SH1106 allocation failed");
     return false;
   }
-
+  display.setContrast(64);
   // Setup display parameters
   display.setDisplayRotation(U8G2_R1);
   display.setFont(u8g2_font_profont10_tr); // Default font for labels
@@ -69,7 +69,7 @@ void DisplayManager::showPowerPage(float importPower, float exportPower,
   display.setCursor(0, 55);
   display.print(formatPower(exportPower));
 
-  display.setFont(u8g2_font_helvR08_tn);
+  display.setFont(u8g2_font_profont10_tr);
   display.drawStr(0, 73, "Total:");
 
   // daily import and export
@@ -201,49 +201,49 @@ void DisplayManager::showInfoPage() {
   display.setFont(u8g2_font_profont10_tr);
   display.drawStr(0, 45, "WiFi:");
   display.setFont(u8g2_font_7x14_tr);
-  display.setCursor(0, 55);
+  display.setCursor(30, 45); // Moved cursor right to align with "WiFi:"
   if (WiFi.status() == WL_CONNECTED) {
-    display.print("Online");
+    display.print("Yes");
 
-    // IP Address with alternating backgrounds, no dots
-    display.setFont(u8g2_font_profont10_tr); // Slightly larger than 4x6
-    display.drawStr(0, 73, "IP:");
+    // IP Address
+    display.setFont(u8g2_font_robot_de_niro_tn);
     IPAddress ip = WiFi.localIP();
 
     // Calculate positions with 5 pixels per character
     const int charWidth = 5;
     const int blockWidth = charWidth * 3 + 1; // Each block is 3 digits
     const int startX = 0;
-    const int y = 83;
-
-    // Draw background blocks
-    for (int i = 0; i < 4; i++) {
-      if (i % 2 == 1) { // Alternate blocks
-        display.drawBox(startX + (i * blockWidth), y - 1, blockWidth, 10);
-      }
-    }
+    const int y = 60; // Moved up to be closer to WiFi status
 
     // Print numbers
-    display.setDrawColor(1); // Normal color for odd blocks
+    display.setDrawColor(1);
     display.setCursor(startX, y);
     display.printf("%03d", ip[0]);
 
-    display.setDrawColor(0); // Inverted for even blocks
     display.setCursor(startX + blockWidth, y);
     display.printf("%03d", ip[1]);
 
-    display.setDrawColor(1); // Back to normal
     display.setCursor(startX + (blockWidth * 2), y);
     display.printf("%03d", ip[2]);
 
-    display.setDrawColor(0); // Inverted for last block
     display.setCursor(startX + (blockWidth * 3), y);
     display.printf("%03d", ip[3]);
-
-    display.setDrawColor(1); // Reset to normal
   } else {
-    display.print("Offline");
+    display.print("Off");
   }
+
+  // RAM Info
+  display.setFont(u8g2_font_profont10_tr);
+  uint32_t totalRam = ESP.getHeapSize() / 1024; // Total RAM in KB
+  uint32_t freeRam = ESP.getFreeHeap() / 1024;  // Free RAM in KB
+  display.drawStr(0, 75, "RAM:");
+  display.setFont(u8g2_font_robot_de_niro_tn);
+  display.setCursor(25,
+                    75); // Moved from 25 to 30 to give more space after "RAM:"
+  display.printf("%d", totalRam);
+  display.setCursor(48,
+                    75); // Moved from 45 to 55 to accommodate larger numbers
+  display.printf("(%d)", freeRam);
 
   display.sendBuffer();
 }
