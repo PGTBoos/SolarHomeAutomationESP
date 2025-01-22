@@ -7,13 +7,20 @@
 #include "EnvironmentSensor.h"
 #include "TimeSync.h"
 #include "RulesEngine.h"
+class SimpleRuleEngine; // Forward declaration
+extern SimpleRuleEngine ruleEngine;
+
 #include "DisplayManager.h"
 #include "NetworkCheck.h"
 
 // External variable declarations
 extern HomeP1Device *p1Meter;
-extern SimpleRuleEngine ruleEngine;
-extern unsigned long lastStateChangeTime[3];
+
+// Define constants
+static const uint8_t NUM_SOCKETS = 4;
+
+extern unsigned long lastStateChangeTime[NUM_SOCKETS];
+extern HomeSocketDevice *sockets[NUM_SOCKETS];
 extern EnvironmentSensors sensors; // Make sure this matches your actual class name
 extern DisplayManager display;
 extern TimeSync timeSync;
@@ -25,9 +32,7 @@ struct Config
     String wifi_ssid;
     String wifi_password;
     String p1_ip;
-    String socket_1;
-    String socket_2;
-    String socket_3;
+    String socket_ip[NUM_SOCKETS];
     String phone_ip;
 
     float yesterdayImport;
@@ -59,6 +64,7 @@ struct TimingControl
     unsigned long lastDisplayUpdate = 0;
     unsigned long lastP1Update = 0;
     unsigned long lastSocketUpdate = 0; // for a time interval to update the socket array (as group) each socket will have individual timers too
+    unsigned long lastSocketUpdates[NUM_SOCKETS] = {0};
     unsigned long lastWiFiCheck = 0;
     unsigned long lastPhoneCheck = 0;
 };

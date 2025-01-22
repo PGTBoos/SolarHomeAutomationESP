@@ -48,7 +48,7 @@ int Turn::OnOff::inbetween(const char *startTime, const char *endTime) {
   return result;
 }
 
-// Find implementations
+// Find implementations for use in IP adres availability
 int Find::response(const char *ip) {
   if (ip == nullptr && phoneCheck) {
     int result = phoneCheck->isDevicePresent() ? 1 : 0;
@@ -80,6 +80,37 @@ int Logical::NOT(int func) {
   int result = (func <= 0) ? 1 : 0;
   Serial.printf("NOT operation: NOT %d = %d\n", func, result);
   return result;
+}
+
+int Time::random59() {
+  TimeSync::TimeData t = timeSync.getTime();
+  srand(t.dayOfYear);
+  int result = rand() % 60;
+  Serial.printf("Random59 for day %d: %d\n", t.dayOfYear, result);
+  return result;
+}
+
+const char *Time::addTime(const char *timeStr, int minutes) {
+  int hour, minute;
+  sscanf(timeStr, "%d:%d", &hour, &minute);
+
+  // Add minutes
+  minute += minutes;
+
+  // Handle overflow
+  hour += minute / 60;
+  minute = minute % 60;
+
+  // Handle 24-hour wrap
+  hour = hour % 24;
+
+  // Format time string
+  snprintf(timeBuffer, sizeof(timeBuffer), "%02d:%02d", hour, minute);
+
+  Serial.printf("AddTime: %s + %d minutes = %s\n", timeStr, minutes,
+                timeBuffer);
+
+  return timeBuffer;
 }
 
 // Time implementations

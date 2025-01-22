@@ -28,7 +28,7 @@ bool DisplayManager::begin() {
     Serial.println("SH1106 allocation failed");
     return false;
   }
-  display.setContrast(128);
+  display.setContrast(64);
   // Setup display parameters
   display.setDisplayRotation(U8G2_R1);
   display.setFont(u8g2_font_profont10_tr); // Default font for labels
@@ -42,7 +42,10 @@ bool DisplayManager::begin() {
   display.sendBuffer();
 
   displayFound = true;
+  currentPage = 0;
+  lastPageChange = millis() - PAGE_DURATION;
   Serial.println("Display initialized successfully!");
+
   return true;
 }
 
@@ -85,7 +88,7 @@ void DisplayManager::showPowerPage(float importPower, float exportPower,
   display.setCursor(0, 55);
   display.print(formatPower(exportPower));
 
-  display.setFont(u8g2_font_helvR08_tn);
+  display.setFont(u8g2_font_profont10_tr);
   display.drawStr(0, 73, "Total:");
 
   // daily import and export
@@ -153,10 +156,8 @@ void DisplayManager::showEnvironmentPage(float temp, float humidity,
   display.sendBuffer();
 }
 
-void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
-                                      const String &sw1Time,
-                                      const String &sw2Time,
-                                      const String &sw3Time) {
+void DisplayManager::showSwitchesPage(const bool switches[],
+                                      const String switchTimes[]) {
   if (!displayFound)
     return;
 
@@ -185,10 +186,11 @@ void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
     }
   };
 
-  // Draw all switches with more spacing due to larger font
-  drawSwitch(20, "SW 1:", switch1);
-  drawSwitch(40, "SW 2:", switch2);
-  drawSwitch(60, "SW 3:", switch3);
+  for (int i = 0; i < NUM_SOCKETS; i++) {
+    char name[10];
+    snprintf(name, sizeof(name), "SW %d:", i + 1);
+    drawSwitch(20 + (i * 20), name, switches[i]);
+  }
 
   display.sendBuffer();
 }
@@ -217,53 +219,49 @@ void DisplayManager::showInfoPage() {
   display.setFont(u8g2_font_profont10_tr);
   display.drawStr(0, 45, "WiFi:");
   display.setFont(u8g2_font_7x14_tr);
-  display.setCursor(0, 55);
+  display.setCursor(30, 45); // Moved cursor right to align with "WiFi:"
   if (WiFi.status() == WL_CONNECTED) {
-    display.print("Online");
+    display.print("Yes");
 
-    // IP Address with alternating backgrounds, no dots
-    display.setFont(
-        u8g2_font_robot_de_niro_tn); // u8g2_font_tiny_gk_tr); // erg klein
-                                     // u8g2_font_profont10_tr); //
-                                     //  Slightly larger than 4x6
-    display.drawStr(0, 73, "IP:");
+    // IP Address
+    display.setFont(u8g2_font_robot_de_niro_tn);
     IPAddress ip = WiFi.localIP();
 
     // Calculate positions with 5 pixels per character
     const int charWidth = 5;
     const int blockWidth = charWidth * 3 + 1; // Each block is 3 digits
     const int startX = 0;
-    const int y = 83;
-
-    // Draw background blocks
-    for (int i = 0; i < 4; i++) {
-      if (i % 2 == 1) { // Alternate blocks
-        //        display.drawBox(-1 + startX + (i * blockWidth), y - 1,
-        //        blockWidth - 1, 10);
-      }
-    }
+    const int y = 60; // Moved up to be closer to WiFi status
 
     // Print numbers
-    display.setDrawColor(1); // Normal color for odd blocks
+    display.setDrawColor(1);
     display.setCursor(startX, y);
     display.printf("%03d", ip[0]);
 
-    // display.setDrawColor(0); // Inverted for even blocks
     display.setCursor(startX + blockWidth, y);
     display.printf("%03d", ip[1]);
 
-    display.setDrawColor(1); // Back to normal
     display.setCursor(startX + (blockWidth * 2), y);
     display.printf("%03d", ip[2]);
 
-    // display.setDrawColor(0); // Inverted for last block
     display.setCursor(startX + (blockWidth * 3), y);
     display.printf("%03d", ip[3]);
-
-    display.setDrawColor(1); // Reset to normal
   } else {
-    display.print("Offline");
+    display.print("Off");
   }
+
+  // RAM Info
+  display.setFont(u8g2_font_profont10_tr);
+  uint32_t totalRam = ESP.getHeapSize() / 1024; // Total RAM in KB
+  uint32_t freeRam = ESP.getFreeHeap() / 1024;  // Free RAM in KB
+  display.drawStr(0, 75, "RAM:");
+  display.setFont(u8g2_font_robot_de_niro_tn);
+  display.setCursor(25,
+                    75); // Moved from 25 to 30 to give more space after "RAM:"
+  display.printf("%d", totalRam);
+  display.setCursor(48,
+                    75); // Moved from 45 to 55 to accommodate larger numbers
+  display.printf("(%d)", freeRam);
 
   display.sendBuffer();
 }
@@ -271,11 +269,11 @@ void DisplayManager::showInfoPage() {
 void DisplayManager::updateDisplay(float importPower, float exportPower,
                                    float totalImport, float totalExport,
                                    float temp, float humidity, float light,
-                                   bool sw1, bool sw2, bool sw3,
-                                   const String &sw1Time, const String &sw2Time,
-                                   const String &sw3Time) {
+                                   const bool switches[],
+                                   const String switchTimes[]) {
   if (!displayFound)
-    return;
+    Serial.println("Display not found");
+  return;
 
   // Rotate pages every PAGE_DURATION milliseconds
   if (millis() - lastPageChange >= PAGE_DURATION) {
@@ -294,7 +292,7 @@ void DisplayManager::updateDisplay(float importPower, float exportPower,
     showEnvironmentPage(temp, humidity, light);
     break;
   case 2:
-    showSwitchesPage(sw1, sw2, sw3, sw1Time, sw2Time, sw3Time);
+    showSwitchesPage(switches, switchTimes);
     break;
   case 3:
     showInfoPage(); // Now using the parameter-less version
@@ -472,103 +470,90 @@ bool HomeP1Device::isConnected() const
 -------------------
 #include "HomeSocketDevice.h"
 
-HomeSocketDevice::HomeSocketDevice(const char *ip) : baseUrl("http://" + String(ip)),
-                                                     lastKnownState(false),
-                                                     lastReadTime(0),
-                                                     lastReadSuccess(false),
-                                                     consecutiveFailures(0),
-                                                     deviceIP(ip),
-                                                     lastLogTime(0)
-{
-    Serial.printf("Initializing socket device at IP: %s\n", ip);
+HomeSocketDevice::HomeSocketDevice(const char *ip)
+    : baseUrl("http://" + String(ip)), lastKnownState(false), lastReadTime(0),
+      lastReadSuccess(false), consecutiveFailures(0), deviceIP(ip),
+      lastLogTime(0) {
+  Serial.printf("Initializing socket device at IP: %s\n", ip);
 }
 
-void HomeSocketDevice::update()
-{
-    unsigned long currentTime = millis();
+void HomeSocketDevice::update() {
+  unsigned long currentTime = millis();
 
-    // Only try updating if enough time has passed since last attempt
-    if (currentTime - lastReadTime < READ_INTERVAL)
-    {
-        return;
-    }
+  // Only try updating if enough time has passed since last attempt
+  if (currentTime - lastReadTime < READ_INTERVAL) {
+    return;
+  }
 
-    // Calculate backoff time based on failures (max 60 seconds)
-    unsigned long backoffTime = min(consecutiveFailures * 5000UL, 60000UL);
-    if (currentTime - lastReadTime < backoffTime)
-    {
-        return;
-    }
+  // Calculate backoff time based on failures (max 60 seconds)
+  unsigned long backoffTime = min(consecutiveFailures * 5000UL, 60000UL);
+  if (currentTime - lastReadTime < backoffTime) {
+    return;
+  }
 
-    // Regular status check
-    if (!getState())
-    {
-        consecutiveFailures++;
-        if (currentTime - lastLogTime >= 30000)
-        {
-            Serial.printf("PowerSocket > %s > Status > Offline (retry in %lu sec)\n",
-                          deviceIP.c_str(),
-                          backoffTime / 1000);
-            lastLogTime = currentTime;
-        }
+  // Regular status check
+  if (!getState()) {
+    consecutiveFailures++;
+    if (currentTime - lastLogTime >= 30000) {
+      Serial.printf("PowerSocket > %s > Status > Offline (retry in %lu sec)\n",
+                    deviceIP.c_str(), backoffTime / 1000);
+      lastLogTime = currentTime;
     }
-    else
-    {
-        if (consecutiveFailures > 0)
-        {
-            Serial.printf("PowerSocket > %s > Status > Back online\n", deviceIP.c_str());
-            lastLogTime = currentTime;
-        }
-        consecutiveFailures = 0;
+  } else {
+    if (consecutiveFailures > 0) {
+      Serial.printf("PowerSocket > %s > Status > Back online\n",
+                    deviceIP.c_str());
+      lastLogTime = currentTime;
     }
+    consecutiveFailures = 0;
+  }
 
-    lastReadTime = currentTime;
+  lastReadTime = currentTime;
 }
 
-bool HomeSocketDevice::makeHttpRequest(const String &endpoint, const String &method, const String &payload, String &response)
-{
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        return false;
-    }
+bool HomeSocketDevice::makeHttpRequest(const String &endpoint,
+                                       const String &method,
+                                       const String &payload,
+                                       String &response) {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
 
-    WiFiClient newClient;
-    HTTPClient http;
-    newClient.setTimeout(5000);
+  WiFiClient newClient;
+  HTTPClient http;
+  newClient.setTimeout(5000);
 
-    String fullUrl = baseUrl + "/api/v1/state";
+  String fullUrl = baseUrl + "/api/v1/state";
 
-    if (!http.begin(newClient, fullUrl))
-    {
-        return false;
-    }
+  if (!http.begin(newClient, fullUrl)) {
+    newClient.stop();
+    return false;
+  }
 
-    http.setTimeout(5000);
-    http.setReuse(false);
+  http.setTimeout(5000);
+  http.setReuse(false);
 
-    int httpCode;
-    if (method == "GET")
-    {
-        httpCode = http.GET();
-    }
-    else if (method == "PUT")
-    {
-        http.addHeader("Content-Type", "application/json");
-        httpCode = http.PUT(payload);
-    }
+  int httpCode;
+  if (method == "GET") {
+    httpCode = http.GET();
+  } else if (method == "PUT") {
+    http.addHeader("Content-Type", "application/json");
+    httpCode = http.PUT(payload);
+  }
 
-    bool success = (httpCode == HTTP_CODE_OK);
-    if (success)
-    {
-        response = http.getString();
-    }
+  bool success = (httpCode == HTTP_CODE_OK);
+  if (success) {
+    response = http.getString();
+  }
 
-    http.end();
-    return success;
+  http.end();
+  newClient.stop();
+  return success;
 }
 
 // for raw output enable below code
-// bool HomeSocketDevice::makeHttpRequest(const String &endpoint, const String &method, const String &payload, String &response)
+// bool HomeSocketDevice::makeHttpRequest(const String &endpoint, const String
+// &method, const String &payload, String &response)
 // {
 //     if (WiFi.status() != WL_CONNECTED)
 //     {
@@ -584,8 +569,8 @@ bool HomeSocketDevice::makeHttpRequest(const String &endpoint, const String &met
 
 //     if (!http.begin(newClient, fullUrl))
 //     {
-//         Serial.printf("Power socket > %s > Connection failed\n", fullUrl.c_str());
-//         return false;
+//         Serial.printf("Power socket > %s > Connection failed\n",
+//         fullUrl.c_str()); return false;
 //     }
 
 //     http.setTimeout(5000);
@@ -605,68 +590,67 @@ bool HomeSocketDevice::makeHttpRequest(const String &endpoint, const String &met
 //     if (httpCode == HTTP_CODE_OK)
 //     {
 //         response = http.getString();
-//         Serial.printf("Power socket > %s > %d > %s\n", fullUrl.c_str(), httpCode, response.c_str());
+//         Serial.printf("Power socket > %s > %d > %s\n", fullUrl.c_str(),
+//         httpCode, response.c_str());
 //     }
 //     else if (httpCode == -1)
 //     {
-//         Serial.printf("Power socket > %s > %d > disconnected\n", fullUrl.c_str(), httpCode);
+//         Serial.printf("Power socket > %s > %d > disconnected\n",
+//         fullUrl.c_str(), httpCode);
 //     }
 //     else
 //     {
-//         Serial.printf("Power socket > %s > %d > HTTP error\n", fullUrl.c_str(), httpCode);
+//         Serial.printf("Power socket > %s > %d > HTTP error\n",
+//         fullUrl.c_str(), httpCode);
 //     }
 
 //     http.end();
 //     return (httpCode == HTTP_CODE_OK);
 // }
 
-bool HomeSocketDevice::getState()
-{
-    String response;
-    if (!makeHttpRequest("/api/v1/state", "GET", "", response))
-    {
-        Serial.printf("PowerSocket > %s/api/v1/state > Get > HTTP error\n", deviceIP.c_str());
-        lastReadSuccess = false;
-        return false;
-    }
+bool HomeSocketDevice::getState() {
+  String response;
+  if (!makeHttpRequest("/api/v1/state", "GET", "", response)) {
+    Serial.printf("PowerSocket > %s/api/v1/state > Get > HTTP error\n",
+                  deviceIP.c_str());
+    lastReadSuccess = false;
+    return false;
+  }
 
-    StaticJsonDocument<1024> doc;
-    DeserializationError error = deserializeJson(doc, response);
+  StaticJsonDocument<1024> doc;
+  DeserializationError error = deserializeJson(doc, response);
 
-    if (error)
-    {
-        Serial.printf("PowerSocket > %s/api/v1/state > Get > JSON error\n", deviceIP.c_str());
-        lastReadSuccess = false;
-        return false;
-    }
+  if (error) {
+    Serial.printf("PowerSocket > %s/api/v1/state > Get > JSON error\n",
+                  deviceIP.c_str());
+    lastReadSuccess = false;
+    return false;
+  }
 
-    lastKnownState = doc["power_on"] | false;
-    Serial.printf("PowerSocket > %s/api/v1/state > Get > is %s\n",
-                  deviceIP.c_str(),
-                  lastKnownState ? "on" : "off");
-    lastReadSuccess = true;
-    return true;
+  lastKnownState = doc["power_on"] | false;
+  Serial.printf("PowerSocket > %s/api/v1/state > Get > is %s\n",
+                deviceIP.c_str(), lastKnownState ? "on" : "off");
+  lastReadSuccess = true;
+  return true;
 }
 
-bool HomeSocketDevice::setState(bool state)
-{
-    StaticJsonDocument<200> doc;
-    doc["power_on"] = state;
-    String jsonString;
-    serializeJson(doc, jsonString);
+bool HomeSocketDevice::setState(bool state) {
+  StaticJsonDocument<200> doc;
+  doc["power_on"] = state;
+  String jsonString;
+  serializeJson(doc, jsonString);
 
-    String response;
-    if (!makeHttpRequest("/api/v1/state", "PUT", jsonString, response))
-    {
-        Serial.printf("PowerSocket > %s/api/v1/state > Put > HTTP error\n", deviceIP.c_str());
-        return false;
-    }
+  String response;
+  if (!makeHttpRequest("/api/v1/state", "PUT", jsonString, response)) {
+    Serial.printf("PowerSocket > %s/api/v1/state > Put > HTTP error\n",
+                  deviceIP.c_str());
+    return false;
+  }
 
-    lastKnownState = state;
-    Serial.printf("PowerSocket > %s/api/v1/state > Put > turn %s\n",
-                  deviceIP.c_str(),
-                  state ? "on" : "off");
-    return true;
+  lastKnownState = state;
+  Serial.printf("PowerSocket > %s/api/v1/state > Put > turn %s\n",
+                deviceIP.c_str(), state ? "on" : "off");
+  return true;
 }
 -------------------
 {
@@ -686,14 +670,15 @@ Config config;
 DisplayManager display;
 EnvironmentSensors sensors;
 HomeP1Device *p1Meter = nullptr;
-HomeSocketDevice *socket1 = nullptr;
-HomeSocketDevice *socket2 = nullptr;
-HomeSocketDevice *socket3 = nullptr;
+
+HomeSocketDevice *sockets[NUM_SOCKETS] = {nullptr, nullptr, nullptr};
+unsigned long lastStateChangeTime[NUM_SOCKETS] = {0, 0, 0};
+bool switchForceOff[NUM_SOCKETS] = {false, false, false};
+
 TimeSync timeSync;
 WebInterface webServer;
 NetworkCheck *phoneCheck = nullptr;
-unsigned long lastStateChangeTime[3] = {0, 0, 0};
-bool switchForceOff[3] = {false, false, false};
+
 unsigned long lastTimeDisplay = 0;
 
 bool loadConfiguration() {
@@ -708,6 +693,17 @@ bool loadConfiguration() {
     return false;
   }
 
+  // Print raw config file content
+  Serial.println("\nRaw config file content:");
+  Serial.println("------------------------");
+  while (configFile.available()) {
+    Serial.write(configFile.read());
+  }
+  Serial.println("\n------------------------");
+
+  // Reset file pointer to start
+  configFile.seek(0);
+
   StaticJsonDocument<1024> doc;
   DeserializationError error = deserializeJson(doc, configFile);
   configFile.close();
@@ -721,9 +717,16 @@ bool loadConfiguration() {
   config.wifi_ssid = doc["wifi_ssid"].as<String>();
   config.wifi_password = doc["wifi_password"].as<String>();
   config.p1_ip = doc["p1_ip"].as<String>();
-  config.socket_1 = doc["socket_1"].as<String>();
-  config.socket_2 = doc["socket_2"].as<String>();
-  config.socket_3 = doc["socket_3"].as<String>();
+
+  for (int i = 0; i < NUM_SOCKETS; i++) {
+    String key = "socket_" + String(i + 1);
+    config.socket_ip[i] = doc[key].as<String>();
+    Serial.printf("Loaded %s: %s\n", key.c_str(), config.socket_ip[i].c_str());
+  }
+
+  // config.socket_1 = doc["socket_1"].as<String>();
+  // config.socket_2 = doc["socket_2"].as<String>();
+  // config.socket_3 = doc["socket_3"].as<String>();
   config.power_on_threshold = doc["power_on_threshold"] | 1000.0f;
   config.power_off_threshold = doc["power_off_threshold"] | 990.0f;
   config.min_on_time = doc["min_on_time"] | 300UL;
@@ -751,6 +754,10 @@ void connectWiFi() {
   } else {
     Serial.println("\nWiFi connection failed!");
   }
+  // give the ip stack som time
+  delay(200);
+  yield();
+  delay(300);
 }
 
 bool canChangeState(int switchIndex, bool newState) {
@@ -775,122 +782,129 @@ bool canChangeState(int switchIndex, bool newState) {
 void checkMaxOnTime() {
   unsigned long currentTime = millis();
 
-  for (int i = 0; i < 3; i++) {
-    bool currentState = false;
-    if (i == 0 && socket1)
-      currentState = socket1->getCurrentState();
-    if (i == 1 && socket2)
-      currentState = socket2->getCurrentState();
-    if (i == 2 && socket3)
-      currentState = socket3->getCurrentState();
-
-    if (currentState &&
+  for (int i = 0; i < NUM_SOCKETS; i++) {
+    if (sockets[i] && sockets[i]->getCurrentState() &&
         (currentTime - lastStateChangeTime[i]) > config.max_on_time) {
-      if (i == 0 && socket1)
-        socket1->setState(false);
-      if (i == 1 && socket2)
-        socket2->setState(false);
-      if (i == 2 && socket3)
-        socket3->setState(false);
+      sockets[i]->setState(false);
       switchForceOff[i] = true;
       lastStateChangeTime[i] = currentTime;
     }
   }
 }
 
-void updateSwitch1Logic() {
-  if (!socket1 || !p1Meter)
-    return;
+// void updateSwitch1Logic() {
+//   if (!socket1 || !p1Meter)
+//     return;
 
-  float exportPower = p1Meter->getCurrentExport();
-  bool currentState = socket1->getCurrentState();
-  bool newState = currentState;
+//   float exportPower = p1Meter->getCurrentExport();
+//   bool currentState = socket1->getCurrentState();
+//   bool newState = currentState;
 
-  if (exportPower > config.power_on_threshold && !currentState) {
-    newState = true;
-  } else if (exportPower < config.power_off_threshold && currentState) {
-    newState = false;
-  }
+//   if (exportPower > config.power_on_threshold && !currentState) {
+//     newState = true;
+//   } else if (exportPower < config.power_off_threshold && currentState) {
+//     newState = false;
+//   }
 
-  if (newState != currentState && canChangeState(0, newState)) {
-    socket1->setState(newState);
-    lastStateChangeTime[0] = millis();
-  }
-}
+//   if (newState != currentState && canChangeState(0, newState)) {
+//     socket1->setState(newState);
+//     lastStateChangeTime[0] = millis();
+//   }
+// }
 
-void updateSwitch2Logic() {
-  if (!socket2)
-    return;
+// void updateSwitch2Logic() {
+//   if (!socket2)
+//     return;
 
-  int hour, minute;
-  timeSync.getCurrentHourMinute(hour, minute);
-  float light = sensors.getLightLevel();
-  bool currentState = socket2->getCurrentState();
-  bool newState = currentState;
+//   int hour, minute;
+//   timeSync.getCurrentHourMinute(hour, minute);
+//   float light = sensors.getLightLevel();
+//   bool currentState = socket2->getCurrentState();
+//   bool newState = currentState;
 
-  // After 17:45 and light < 75 lux
-  if (hour >= 17 && minute >= 45 && light < 75) {
-    newState = true;
-  } else if (light >= 75) {
-    newState = false;
-  }
+//   // After 17:45 and light < 75 lux
+//   if (hour >= 17 && minute >= 45 && light < 75) {
+//     newState = true;
+//   } else if (light >= 75) {
+//     newState = false;
+//   }
 
-  if (newState != currentState && canChangeState(1, newState)) {
-    socket2->setState(newState);
-    lastStateChangeTime[1] = millis();
-  }
-}
+//   if (newState != currentState && canChangeState(1, newState)) {
+//     socket2->setState(newState);
+//     lastStateChangeTime[1] = millis();
+//   }
+// }
 
-void updateSwitch3Logic() {
-  if (!socket3)
-    return;
+// void updateSwitch3Logic() {
+//   if (!socket3)
+//     return;
 
-  int hour, minute;
-  timeSync.getCurrentHourMinute(hour, minute);
-  float light = sensors.getLightLevel();
-  bool currentState = socket3->getCurrentState();
-  bool newState = currentState;
+//   int hour, minute;
+//   timeSync.getCurrentHourMinute(hour, minute);
+//   float light = sensors.getLightLevel();
+//   bool currentState = socket3->getCurrentState();
+//   bool newState = currentState;
 
-  // After 17:30 and light < 50 lux
-  if (hour >= 17 && minute >= 30 && light < 50) {
-    newState = true;
-  } else if (light >= 50) {
-    newState = false;
-  }
+//   // After 17:30 and light < 50 lux
+//   if (hour >= 17 && minute >= 30 && light < 50) {
+//     newState = true;
+//   } else if (light >= 50) {
+//     newState = false;
+//   }
 
-  if (newState != currentState && canChangeState(2, newState)) {
-    socket3->setState(newState);
-    lastStateChangeTime[2] = millis();
-  }
-}
+//   if (newState != currentState && canChangeState(2, newState)) {
+//     socket3->setState(newState);
+//     lastStateChangeTime[2] = millis();
+//   }
+// }
 
 void updateDisplay() {
   if (!p1Meter)
     return;
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastTimeDisplay >= 1000) {
-    int hour, minute;
-    timeSync.getCurrentHourMinute(hour, minute);
-    Serial.printf("Current time: %02d:%02d\n", hour, minute);
-    lastTimeDisplay = currentMillis;
-  }
 
-  // Calculate time differences
-  String sw1Time = String((unsigned long)(millis() - lastStateChangeTime[0]));
-  String sw2Time = String((unsigned long)(millis() - lastStateChangeTime[1]));
-  String sw3Time = String((unsigned long)(millis() - lastStateChangeTime[2]));
+  bool switchStates[NUM_SOCKETS];
+  String switchTimes[NUM_SOCKETS];
+
+  for (int i = 0; i < NUM_SOCKETS; i++) {
+    switchStates[i] = sockets[i] ? sockets[i]->getCurrentState() : false;
+    switchTimes[i] = String(millis() - lastStateChangeTime[i]);
+  }
 
   display.updateDisplay(p1Meter->getCurrentImport(),
                         p1Meter->getCurrentExport(), p1Meter->getTotalImport(),
                         p1Meter->getTotalExport(), sensors.getTemperature(),
                         sensors.getHumidity(), sensors.getLightLevel(),
-                        socket1 ? socket1->getCurrentState() : false,
-                        socket2 ? socket2->getCurrentState() : false,
-                        socket3 ? socket3->getCurrentState() : false,
-                        String(millis() - lastStateChangeTime[0]),
-                        String(millis() - lastStateChangeTime[1]),
-                        String(millis() - lastStateChangeTime[2]));
+                        switchStates, switchTimes);
 }
+// void updateDisplay() {
+//   if (!p1Meter)
+//     return;
+//   unsigned long currentMillis = millis();
+//   if (currentMillis - lastTimeDisplay >= 1000) {
+//     int hour, minute;
+//     timeSync.getCurrentHourMinute(hour, minute);
+//     Serial.printf("Current time: %02d:%02d\n", hour, minute);
+//     lastTimeDisplay = currentMillis;
+//   }
+
+//   // Calculate time differences
+//   String sw1Time = String((unsigned long)(millis() -
+//   lastStateChangeTime[0])); String sw2Time = String((unsigned long)(millis()
+//   - lastStateChangeTime[1])); String sw3Time = String((unsigned
+//   long)(millis() - lastStateChangeTime[2]));
+
+//   display.updateDisplay(p1Meter->getCurrentImport(),
+//                         p1Meter->getCurrentExport(),
+//                         p1Meter->getTotalImport(), p1Meter->getTotalExport(),
+//                         sensors.getTemperature(), sensors.getHumidity(),
+//                         sensors.getLightLevel(), socket1 ?
+//                         socket1->getCurrentState() : false, socket2 ?
+//                         socket2->getCurrentState() : false, socket3 ?
+//                         socket3->getCurrentState() : false, String(millis() -
+//                         lastStateChangeTime[0]), String(millis() -
+//                         lastStateChangeTime[1]), String(millis() -
+//                         lastStateChangeTime[2]));
+// }
 
 void setup() {
   WiFi.persistent(false);
@@ -899,12 +913,64 @@ void setup() {
 
   Serial.begin(115200);
 
+  // First try to initialize I2C properly
+  bool wireInitialized = false;
+  for (int i = 0; i < 3; i++) {
+    Serial.printf("\nAttempting Wire initialization (attempt %d/3)...\n",
+                  i + 1);
+
+    Wire.end(); // Make sure we start clean
+    delay(50);
+
+    if (!Wire.begin()) {
+      Serial.println("Wire.begin() failed!");
+      continue;
+    }
+
+    delay(50);
+
+    // Try to set clock speed
+    Wire.setClock(100000);
+
+    // Scan for actual devices
+    byte error, address;
+    int deviceCount = 0;
+
+    Serial.println("Scanning I2C bus for devices...");
+    for (address = 1; address < 127; address++) {
+      Wire.beginTransmission(address);
+      error = Wire.endTransmission();
+
+      if (error == 0) {
+        Serial.printf("Found device at address 0x%02X\n", address);
+        deviceCount++;
+      } else if (error != 2) { // Ignore error 2 (NACK on address) as that's
+                               // normal for unused addresses
+        Serial.printf("Error %d at address 0x%02X\n", error, address);
+      }
+    }
+
+    Serial.printf("I2C scan complete: found %d devices\n", deviceCount);
+    if (deviceCount > 0) {
+      wireInitialized = true;
+      break;
+    }
+
+    delay(100);
+  }
+
+  if (!wireInitialized) {
+    Serial.println("FATAL: Failed to initialize Wire after 3 attempts!");
+  }
+
+  // Phone check initialization
   if (config.phone_ip != "" && config.phone_ip != "0" &&
       config.phone_ip != "null") {
     phoneCheck = new NetworkCheck(config.phone_ip.c_str());
     Serial.println("Phone check initialized at: " + config.phone_ip);
   }
 
+  // SPIFFS initialization
   if (!SPIFFS.begin(true)) {
     Serial.println("SPIFFS Mount Failed");
     Serial.println("Trying to format SPIFFS...");
@@ -926,62 +992,106 @@ void setup() {
     Serial.println("Using default configuration");
   }
 
-  Wire.setClock(100000);
-  Wire.begin();
+  // Only proceed with display and sensors if Wire initialized successfully
+  if (wireInitialized) {
+    if (display.begin()) {
+      Serial.println("Display initialized successfully");
+    } else {
+      Serial.println("Display not connected or initialization failed!");
+    }
 
-  if (display.begin()) {
-    Serial.println("Display initialized successfully");
-  } else {
-    Serial.println("Display not connected or initialization failed!");
+    if (sensors.begin()) {
+      Serial.println("Environmental sensors initialized successfully");
+    } else {
+      Serial.println(
+          "Environmental sensors not connected or initialization failed!");
+    }
   }
 
-  if (sensors.begin()) {
-    Serial.println("Environmental sensors initialized successfully");
-  } else {
-    Serial.println(
-        "Environmental sensors not connected or initialization failed!");
-  }
-
+  // Network related initialization
   connectWiFi();
-
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("Config values:");
-    Serial.println("P1 IP: " + config.p1_ip);
-    Serial.println("Socket 1: " + config.socket_1);
-    Serial.println("Socket 2: " + config.socket_2);
-    Serial.println("Socket 3: " + config.socket_3);
-    Serial.println("Phone IP:" + config.phone_ip);
-
-    if (config.p1_ip != "" && config.p1_ip != "0" && config.p1_ip != "null") {
-      p1Meter = new HomeP1Device(config.p1_ip.c_str());
-      Serial.println("P1 Meter initialized at: " + config.p1_ip);
-    }
-
-    if (config.socket_1 != "" && config.socket_1 != "0" &&
-        config.socket_1 != "null") {
-      socket1 = new HomeSocketDevice(config.socket_1.c_str());
-      Serial.println("Socket 1 initialized at: " + config.socket_1);
-    }
-
-    if (config.socket_2 != "" && config.socket_2 != "0" &&
-        config.socket_2 != "null") {
-      socket2 = new HomeSocketDevice(config.socket_2.c_str());
-      Serial.println("Socket 2 initialized at: " + config.socket_2);
-    }
-
-    if (config.socket_3 != "" && config.socket_3 != "0" &&
-        config.socket_3 != "null") {
-      socket3 = new HomeSocketDevice(config.socket_3.c_str());
-      Serial.println("Socket 3 initialized at: " + config.socket_3);
-    }
-
     timeSync.begin();
     webServer.begin();
+    for (int i = 0; i < NUM_SOCKETS; i++) {
+      if (config.socket_ip[i] != "" && config.socket_ip[i] != "0" &&
+          config.socket_ip[i] != "null") {
+        sockets[i] = new HomeSocketDevice(config.socket_ip[i].c_str());
+        Serial.printf("Socket %d initialized at: %s\n", i + 1,
+                      config.socket_ip[i].c_str());
+      }
+    }
   }
-
-  // Initialize timing and state
-  unsigned long startTime = millis();
 }
+
+// void setup() {
+//   WiFi.persistent(false);
+//   WiFi.mode(WIFI_STA);
+//   WiFi.setSleep(false);
+
+//   Serial.begin(115200);
+
+//   if (config.phone_ip != "" && config.phone_ip != "0" &&
+//       config.phone_ip != "null") {
+//     phoneCheck = new NetworkCheck(config.phone_ip.c_str());
+//     Serial.println("Phone check initialized at: " + config.phone_ip);
+//   }
+
+//   if (!SPIFFS.begin(true)) {
+//     Serial.println("SPIFFS Mount Failed");
+//     Serial.println("Trying to format SPIFFS...");
+//     if (SPIFFS.format()) {
+//       Serial.println("SPIFFS formatted successfully");
+//       if (SPIFFS.begin(true)) {
+//         Serial.println("SPIFFS mounted successfully after format");
+//       } else {
+//         Serial.println("SPIFFS mount failed even after format");
+//       }
+//     } else {
+//       Serial.println("SPIFFS format failed");
+//     }
+//   } else {
+//     Serial.println("SPIFFS mounted successfully");
+//   }
+
+//   if (!loadConfiguration()) {
+//     Serial.println("Using default configuration");
+//   }
+
+//   Wire.setClock(100000);
+//   Wire.begin();
+
+//   if (display.begin()) {
+//     Serial.println("Display initialized successfully");
+//   } else {
+//     Serial.println("Display not connected or initialization failed!");
+//   }
+
+//   if (sensors.begin()) {
+//     Serial.println("Environmental sensors initialized successfully");
+//   } else {
+//     Serial.println(
+//         "Environmental sensors not connected or initialization failed!");
+//   }
+
+//   connectWiFi();
+//   if (WiFi.status() == WL_CONNECTED) {
+//     for (int i = 0; i < NUM_SOCKETS; i++) {
+//       if (config.socket_ip[i] != "" && config.socket_ip[i] != "0" &&
+//           config.socket_ip[i] != "null") {
+//         sockets[i] = new HomeSocketDevice(config.socket_ip[i].c_str());
+//         Serial.printf("Socket %d initialized at: %s\n", i + 1,
+//                       config.socket_ip[i].c_str());
+//       }
+//     }
+
+//     timeSync.begin();
+//     webServer.begin();
+//   }
+
+//   // Initialize timing and state
+//   unsigned long startTime = millis();
+// }
 
 void reconnectWiFi() {
   unsigned long currentMillis = millis();
@@ -997,7 +1107,7 @@ void reconnectWiFi() {
 }
 
 static int yesterday;
-static uint8_t operationOrder = 0;
+static uint16_t operationOrder = 0;
 
 void loop() {
   unsigned long currentMillis = millis();
@@ -1044,10 +1154,10 @@ void loop() {
       sensors.update(); // Assuming this method exists, if not we use
                         // sensors.update()
       timing.lastEnvSensorUpdate = currentMillis;
-      operationOrder = 10;
       yield();
       delay(1);
     }
+    operationOrder = 10;
     break;
 
   case 10:
@@ -1068,20 +1178,20 @@ void loop() {
       sensors.update(); // Assuming this method exists, if not we use
                         // sensors.update()
       timing.lastLightSensorUpdate = currentMillis;
-      operationOrder = 20;
       yield();
       delay(1);
     }
+    operationOrder = 20;
     break;
 
   case 20: // Display update (I2C)
     if (currentMillis - timing.lastDisplayUpdate >= timing.DISPLAY_INTERVAL) {
       updateDisplay();
       timing.lastDisplayUpdate = currentMillis;
-      operationOrder = 30;
       yield();
       delay(1);
     }
+    operationOrder = 30;
     break;
 
   case 30: // P1 meter (Network)
@@ -1089,56 +1199,31 @@ void loop() {
         (currentMillis - timing.lastP1Update >= timing.P1_INTERVAL)) {
       p1Meter->update();
       timing.lastP1Update = currentMillis;
-      operationOrder = 40;
       yield();
       delay(50);
-    } else {
-      operationOrder = 40;
     }
+    operationOrder = 40;
     break;
 
-  case 40: // Socket 1 (Network)
-    if (socket1 &&
-        (currentMillis - timing.lastSocket1Update >= timing.SOCKET_INTERVAL)) {
-      socket1->update();
-      timing.lastSocket1Update = currentMillis;
-      if (p1Meter) {
-        updateSwitch1Logic();
+  case 40: // Socket updates (Network)
+    for (int i = 0; i < NUM_SOCKETS; i++) {
+      if (sockets[i] && (currentMillis - timing.lastSocketUpdates[i] >=
+                         timing.SOCKET_INTERVAL)) {
+        sockets[i]->update();
+        timing.lastSocketUpdates[i] = currentMillis;
+        // Handle socket-specific logic
+        if (i == 0 && p1Meter) {
+          // updateSwitch1Logic();
+        } else if (i == 1) {
+          //  updateSwitch2Logic();
+        } else if (i == 2) {
+          // updateSwitch3Logic();
+        }
+        yield();
+        delay(50);
       }
-      operationOrder = 50;
-      yield();
-      delay(50);
-    } else {
-      operationOrder = 50;
     }
-    break;
-
-  case 50: // Socket 2 (Network)
-    if (socket2 &&
-        (currentMillis - timing.lastSocket2Update >= timing.SOCKET_INTERVAL)) {
-      socket2->update();
-      timing.lastSocket2Update = currentMillis;
-      updateSwitch2Logic();
-      operationOrder = 60;
-      yield();
-      delay(50);
-    } else {
-      operationOrder = 60;
-    }
-    break;
-
-  case 60: // Socket 3 (Network)
-    if (socket3 &&
-        (currentMillis - timing.lastSocket3Update >= timing.SOCKET_INTERVAL)) {
-      socket3->update();
-      timing.lastSocket3Update = currentMillis;
-      updateSwitch3Logic();
-      operationOrder = 70;
-      yield();
-      delay(50);
-    } else {
-      operationOrder = 70;
-    }
+    operationOrder = 70;
     break;
 
   case 70: // Max on time check (no I2C or network)
@@ -1173,7 +1258,7 @@ void loop() {
 
   case 100: {
     if (!p1Meter) {
-      operationOrder = 5;
+      operationOrder = 1000;
       break;
     }
 
@@ -1224,7 +1309,18 @@ void loop() {
         lastSavedDay = currentDay;
       }
     }
+    operationOrder = 1000;
+    break;
+  }
+
+    // lets do switching logic above 1000
+
+  case 1000: {
     operationOrder = 5;
+    // uf lux is below 10 and it is after 17:45, turn on socket 1
+    // and socket one is connected
+    // and can ping computer
+
     break;
   }
   default:
@@ -1369,421 +1465,372 @@ bool NetworkCheck::pingDevice()
     return success;
 }
 -------------------
-// SimpleRuleEngine.cpp
 #include "RulesEngine.h"
 
-HomeSocketDevice *SimpleRuleEngine::getSocket(int socket_number)
-{
-    if (socket_number < 1 || socket_number > MAX_SOCKETS)
-    {
-        Serial.printf("Invalid socket number: %d\n", socket_number);
-        return nullptr;
-    }
-    return sockets[socket_number - 1];
+// Turn::OnOff implementations
+int Turn::OnOff::after(const char *timeStr) {
+  int currentHour, currentMinute;
+  timeSync.getCurrentHourMinute(currentHour, currentMinute);
+  int currentMinutes = currentHour * 60 + currentMinute;
+
+  int startHours, startMinutes;
+  sscanf(timeStr, "%d:%d", &startHours, &startMinutes);
+  int startTotalMinutes = startHours * 60 + startMinutes;
+
+  int result = (currentMinutes >= startTotalMinutes) ? 1 : 0;
+  Serial.printf("Turn %s after %s: %s\n", (this == &turn->on) ? "on" : "off",
+                timeStr, result ? "true" : "false");
+  return result;
 }
 
-int SimpleRuleEngine::TurnUntil(int memoryIndex, int turnOnCondition, int turnOffCondition)
-{
-    if (memoryIndex < 0 || memoryIndex >= MEMORY_SLOTS)
-    {
-        Serial.printf("Memory slot %d out of range!\n", memoryIndex);
-        return 0;
-    }
+int Turn::OnOff::inbetween(const char *startTime, const char *endTime) {
+  int currentHour, currentMinute;
+  timeSync.getCurrentHourMinute(currentHour, currentMinute);
+  int currentMinutes = currentHour * 60 + currentMinute;
 
-    if (!memory[memoryIndex] && turnOnCondition)
-    {
-        memory[memoryIndex] = true;
-    }
-    else if (memory[memoryIndex] && turnOffCondition)
-    {
-        memory[memoryIndex] = false;
-    }
+  int startHours, startMinutes;
+  sscanf(startTime, "%d:%d", &startHours, &startMinutes);
+  int startTotalMinutes = startHours * 60 + startMinutes;
 
-    return memory[memoryIndex] ? 1 : 0;
+  int endHours, endMinutes;
+  sscanf(endTime, "%d:%d", &endHours, &endMinutes);
+  int endTotalMinutes = endHours * 60 + endMinutes;
+
+  int result;
+  if (startTotalMinutes <= endTotalMinutes) {
+    result = (currentMinutes >= startTotalMinutes &&
+              currentMinutes < endTotalMinutes)
+                 ? 1
+                 : 0;
+  } else {
+    result = (currentMinutes >= startTotalMinutes ||
+              currentMinutes < endTotalMinutes)
+                 ? 1
+                 : 0;
+  }
+
+  Serial.printf("Turn %s between %s and %s: %s\n",
+                (this == &turn->on) ? "on" : "off", startTime, endTime,
+                result ? "true" : "false");
+  return result;
 }
 
-void SimpleRuleEngine::updateLightLevel()
-{
-    current_lux = sensors.getLightLevel();
-    Serial.printf("Current light level: %.1f lux\n", current_lux);
-}
-
-int SimpleRuleEngine::lightSensorAbove(int lux_value)
-{
-    int result = (current_lux > lux_value) ? 1 : 0;
-    Serial.printf("Light > %d lux: %s\n", lux_value, result ? "true" : "false");
+// Find implementations for use in IP adres availability
+int Find::response(const char *ip) {
+  if (ip == nullptr && phoneCheck) {
+    int result = phoneCheck->isDevicePresent() ? 1 : 0;
+    Serial.printf("Device present: %s\n", result ? "true" : "false");
     return result;
+  }
+  // Implement IP-based detection here when needed
+  return 0;
 }
 
-int SimpleRuleEngine::lightSensorBelow(int lux_value)
-{
-    int result = (current_lux < lux_value) ? 1 : 0;
-    Serial.printf("Light < %d lux: %s\n", lux_value, result ? "true" : "false");
-    return result;
+int Find::noResponse(const char *ip) {
+  return 1 - response(ip);
 }
 
-int SimpleRuleEngine::after(const char *timeStr)
-{
-    int hour, minute;
-    sscanf(timeStr, "%d:%d", &hour, &minute);
-
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-
-    int currentMins = currentHour * 60 + currentMinute;
-    int targetMins = hour * 60 + minute;
-
-    int result = (currentMins >= targetMins) ? 1 : 0;
-    Serial.printf("After %s: %s\n", timeStr, result ? "true" : "false");
-    return result;
+// Logical implementations
+int Logical::OR(int func1, int func2) {
+  int result = ((func1 > 0) || (func2 > 0)) ? 1 : 0;
+  Serial.printf("OR operation: %d OR %d = %d\n", func1, func2, result);
+  return result;
 }
 
-int SimpleRuleEngine::before(const char *timeStr)
-{
-    int hour, minute;
-    sscanf(timeStr, "%d:%d", &hour, &minute);
-
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-
-    int currentMins = currentHour * 60 + currentMinute;
-    int targetMins = hour * 60 + minute;
-
-    int result = (currentMins < targetMins) ? 1 : 0;
-    Serial.printf("Before %s: %s\n", timeStr, result ? "true" : "false");
-    return result;
+int Logical::AND(int func1, int func2) {
+  int result = ((func1 > 0) && (func2 > 0)) ? 1 : 0;
+  Serial.printf("AND operation: %d AND %d = %d\n", func1, func2, result);
+  return result;
 }
 
-int SimpleRuleEngine::OR(int func1, int func2)
-{
-    int result = ((func1 > 0) || (func2 > 0)) ? 1 : 0;
-    Serial.printf("OR operation: %d OR %d = %d\n", func1, func2, result);
-    return result;
+int Logical::NOT(int func) {
+  int result = (func <= 0) ? 1 : 0;
+  Serial.printf("NOT operation: NOT %d = %d\n", func, result);
+  return result;
 }
 
-int SimpleRuleEngine::AND(int func1, int func2)
-{
-    int result = ((func1 > 0) && (func2 > 0)) ? 1 : 0;
-    Serial.printf("AND operation: %d AND %d = %d\n", func1, func2, result);
-    return result;
+int Time::random59() {
+  TimeSync::TimeData t = timeSync.getTime();
+  srand(t.dayOfYear);
+  int result = rand() % 60;
+  Serial.printf("Random59 for day %d: %d\n", t.dayOfYear, result);
+  return result;
 }
 
-int SimpleRuleEngine::NOT(int func)
-{
-    int result = (func <= 0) ? 1 : 0;
-    Serial.printf("NOT operation: NOT %d = %d\n", func, result);
-    return result;
+const char *Time::addTime(const char *timeStr, int minutes) {
+  int hour, minute;
+  sscanf(timeStr, "%d:%d", &hour, &minute);
+
+  // Add minutes
+  minute += minutes;
+
+  // Handle overflow
+  hour += minute / 60;
+  minute = minute % 60;
+
+  // Handle 24-hour wrap
+  hour = hour % 24;
+
+  // Format time string
+  snprintf(timeBuffer, sizeof(timeBuffer), "%02d:%02d", hour, minute);
+
+  Serial.printf("AddTime: %s + %d minutes = %s\n", timeStr, minutes,
+                timeBuffer);
+
+  return timeBuffer;
 }
 
-int SimpleRuleEngine::turnOnInbetween(const char *startTime, const char *endTime)
-{
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-    int currentMinutes = currentHour * 60 + currentMinute;
+// Time implementations
+int Time::after(const char *timeStr) {
+  int hour, minute;
+  sscanf(timeStr, "%d:%d", &hour, &minute);
 
-    // Parse start time
-    int startHours, startMinutes;
-    sscanf(startTime, "%d:%d", &startHours, &startMinutes);
-    int startTotalMinutes = startHours * 60 + startMinutes;
+  int currentHour, currentMinute;
+  timeSync.getCurrentHourMinute(currentHour, currentMinute);
 
-    // Parse end time
-    int endHours, endMinutes;
-    sscanf(endTime, "%d:%d", &endHours, &endMinutes);
-    int endTotalMinutes = endHours * 60 + endMinutes;
+  int currentMins = currentHour * 60 + currentMinute;
+  int targetMins = hour * 60 + minute;
 
-    int result;
-    // Handle cases where the period crosses midnight
-    if (startTotalMinutes <= endTotalMinutes)
-    {
-        // Normal case (e.g., 21:00 to 23:00)
-        result = (currentMinutes >= startTotalMinutes && currentMinutes < endTotalMinutes) ? 1 : 0;
-    }
-    else
-    {
-        // Crosses midnight (e.g., 23:00 to 06:00)
-        result = (currentMinutes >= startTotalMinutes || currentMinutes < endTotalMinutes) ? 1 : 0;
-    }
-
-    Serial.printf("Time between %s and %s: %s\n", startTime, endTime, result ? "true" : "false");
-    return result;
+  int result = (currentMins >= targetMins) ? 1 : 0;
+  Serial.printf("After %s: %s\n", timeStr, result ? "true" : "false");
+  return result;
 }
 
-int SimpleRuleEngine::turnOnBefore(const char *timeStr)
-{
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-    int currentMinutes = currentHour * 60 + currentMinute;
+int Time::before(const char *timeStr) {
+  int hour, minute;
+  sscanf(timeStr, "%d:%d", &hour, &minute);
 
-    // Parse input time string (format: "HH:MM")
-    int hours, minutes;
-    sscanf(timeStr, "%d:%d", &hours, &minutes);
-    int targetMinutes = hours * 60 + minutes;
+  int currentHour, currentMinute;
+  timeSync.getCurrentHourMinute(currentHour, currentMinute);
 
-    int result = (currentMinutes < targetMinutes) ? 1 : 0;
-    Serial.printf("Turn on before %s: %s\n", timeStr, result ? "true" : "false");
-    return result;
+  int currentMins = currentHour * 60 + currentMinute;
+  int targetMins = hour * 60 + minute;
+
+  int result = (currentMins < targetMins) ? 1 : 0;
+  Serial.printf("Before %s: %s\n", timeStr, result ? "true" : "false");
+  return result;
 }
 
-int SimpleRuleEngine::turnOnAfter(const char *startTime)
-{
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-    int currentMinutes = currentHour * 60 + currentMinute;
-
-    // Parse start time
-    int startHours, startMinutes;
-    sscanf(startTime, "%d:%d", &startHours, &startMinutes);
-    int startTotalMinutes = startHours * 60 + startMinutes;
-
-    int result = (currentMinutes >= startTotalMinutes) ? 1 : 0;
-    Serial.printf("Turn on after %s: %s\n", startTime, result ? "true" : "false");
-    return result;
+// Sensor implementations
+void Sensor::updateLight() {
+  engine->current_lux = sensors.getLightLevel();
+  Serial.printf("Current light level: %.1f lux\n", engine->current_lux);
 }
 
-int SimpleRuleEngine::turnOffAfter(const char *startTime)
-{
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-    int currentMinutes = currentHour * 60 + currentMinute;
-
-    // Parse start time
-    int startHours, startMinutes;
-    sscanf(startTime, "%d:%d", &startHours, &startMinutes);
-    int startTotalMinutes = startHours * 60 + startMinutes;
-
-    int result = (currentMinutes < startTotalMinutes) ? 1 : 0; // Return 1 BEFORE the time, 0 after
-    Serial.printf("Turn off after %s: %s\n", startTime, result ? "true" : "false");
-    return result;
+int Sensor::lightAbove(int lux_value) {
+  int result = (engine->current_lux > lux_value) ? 1 : 0;
+  Serial.printf("Light > %d lux: %s\n", lux_value, result ? "true" : "false");
+  return result;
 }
 
-int SimpleRuleEngine::isWeekday(uint8_t dayPattern)
-{
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-
-    // Get current weekday (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
-    time_t now;
-    time(&now);
-    struct tm timeinfo;
-    localtime_r(&now, &timeinfo);
-    int today = timeinfo.tm_wday; // 0-6, Sunday=0
-
-    // Convert weekday to our bit pattern (1 << 0 for Sunday, 1 << 1 for Monday, etc)
-    uint8_t todayBit = (1 << today);
-
-    int result = (dayPattern & todayBit) ? 1 : 0;
-    Serial.printf("Day check (pattern: 0x%02X): %s\n", dayPattern, result ? "true" : "false");
-    return result;
+int Sensor::lightBelow(int lux_value) {
+  int result = (engine->current_lux < lux_value) ? 1 : 0;
+  Serial.printf("Light < %d lux: %s\n", lux_value, result ? "true" : "false");
+  return result;
 }
 
-int SimpleRuleEngine::setMem(int slot, unsigned long value)
-{
-    if (slot < 0 || slot >= MEMORY_SLOTS)
-    {
-        Serial.printf("Memory slot %d out of range!\n", slot);
-        return 0;
-    }
-
-    memory[slot] = value;
-    Serial.printf("Set memory slot %d to %lu\n", slot, value);
-    return 1;
-}
-
-int SimpleRuleEngine::readMem(int slot)
-{
-    if (slot < 0 || slot >= MEMORY_SLOTS)
-    {
-        Serial.printf("Memory slot %d out of range!\n", slot);
-        return 0;
-    }
-
-    unsigned long value = memory[slot];
-    Serial.printf("Read memory slot %d: %lu\n", slot, value);
-    return value;
-}
-
-int SimpleRuleEngine::Delay(int memSlot, int triggerFunction)
-{
-    unsigned long currentMillis = millis();
-
-    // If trigger function is true and timer isn't running
-    if (triggerFunction && readMem(memSlot) == 0)
-    {
-        setMem(memSlot, currentMillis);
-        Serial.printf("Starting delay in slot %d\n", memSlot);
-        return 0;
-    }
-
-    // If timer is running
-    if (readMem(memSlot) > 0)
-    {
-        const unsigned long DELAY_PERIOD = 5 * 60 * 1000; // 5 minutes in milliseconds
-
-        if (currentMillis - readMem(memSlot) >= DELAY_PERIOD)
-        {
-            setMem(memSlot, 0); // Reset timer
-            Serial.printf("Delay completed in slot %d\n", memSlot);
-            return 1;
-        }
-        Serial.printf("Delay still running in slot %d\n", memSlot);
-        return 0;
-    }
-
+// Memory implementations
+int Memory::set(int slot, unsigned long value) {
+  if (slot < 0 || slot >= SimpleRuleEngine::MEMORY_SLOTS) {
+    Serial.printf("Memory slot %d out of range!\n", slot);
     return 0;
+  }
+
+  engine->memorySlots[slot] = value;
+  Serial.printf("Set memory slot %d to %lu\n", slot, value);
+  return 1;
 }
 
-int SimpleRuleEngine::phoneFound()
-{
-    if (phoneCheck)
-    {
-        int result = phoneCheck->isDevicePresent() ? 1 : 0;
-        Serial.printf("Phone present: %s\n", result ? "true" : "false");
-        return result;
-    }
-    Serial.println("Phone check not configured");
+int Memory::read(int slot) {
+  if (slot < 0 || slot >= SimpleRuleEngine::MEMORY_SLOTS) {
+    Serial.printf("Memory slot %d out of range!\n", slot);
     return 0;
+  }
+
+  unsigned long value = engine->memorySlots[slot];
+  Serial.printf("Read memory slot %d: %lu\n", slot, value);
+  return value;
 }
 
-int SimpleRuleEngine::phoneNotFound()
-{
-    int result = 1 - phoneFound();
-    Serial.printf("Phone absent: %s\n", result ? "true" : "false");
-    return result;
-}
+int Memory::delay(int memSlot, int triggerFunction) {
+  unsigned long currentMillis = millis();
 
-int SimpleRuleEngine::isOn(int socket_number)
-{
-    HomeSocketDevice *socket = getSocket(socket_number);
-    if (!socket)
-        return 0;
+  if (triggerFunction && read(memSlot) == 0) {
+    set(memSlot, currentMillis);
+    Serial.printf("Starting delay in slot %d\n", memSlot);
+    return 0;
+  }
 
-    updateSocketDuration(socket_number);
-    return socket->getCurrentState() ? 1 : 0;
-}
+  if (read(memSlot) > 0) {
+    const unsigned long DELAY_PERIOD = 5 * 60 * 1000; // 5 minutes
 
-int SimpleRuleEngine::isOff(int socket_number)
-{
-    return 1 - isOn(socket_number);
-}
-
-void SimpleRuleEngine::updateSocketDuration(int socket_number)
-{
-    if (socket_number < 1 || socket_number > MAX_SOCKETS)
-        return;
-
-    int idx = socket_number - 1;
-    SocketState &state = socketStates[idx];
-
-    // Get current time
-    int currentHour, currentMinute;
-    timeSync.getCurrentHourMinute(currentHour, currentMinute);
-
-    // If state changed, update timestamps
-    HomeSocketDevice *socket = getSocket(socket_number);
-    if (socket && socket->getCurrentState() != state.currentState)
-    {
-        state.currentState = socket->getCurrentState();
-        state.lastStateChange = millis();
-        state.lastChangeHour = currentHour;
-        state.lastChangeMinute = currentMinute;
-        state.stateChangeProcessed = false;
-
-        Serial.printf("Socket %d state changed to: %s at %02d:%02d\n",
-                      socket_number, state.currentState ? "ON" : "OFF",
-                      currentHour, currentMinute);
+    if (currentMillis - read(memSlot) >= DELAY_PERIOD) {
+      set(memSlot, 0);
+      Serial.printf("Delay completed in slot %d\n", memSlot);
+      return 1;
     }
+    Serial.printf("Delay still running in slot %d\n", memSlot);
+  }
+  return 0;
 }
 
-void SimpleRuleEngine::turnOn(int socket_number, int condition)
-{
-    Serial.printf("\nEvaluating ON rule for socket %d\n", socket_number);
-    Serial.printf("Condition result: %s\n", condition ? "true" : "false");
+int Memory::until(int memoryIndex, int turnOnCondition, int turnOffCondition) {
+  if (memoryIndex < 0 || memoryIndex >= SimpleRuleEngine::MEMORY_SLOTS) {
+    Serial.printf("Memory slot %d out of range!\n", memoryIndex);
+    return 0;
+  }
 
-    HomeSocketDevice *socket = getSocket(socket_number);
-    if (!socket)
-        return;
+  if (!engine->memorySlots[memoryIndex] && turnOnCondition) {
+    engine->memorySlots[memoryIndex] = true;
+  } else if (engine->memorySlots[memoryIndex] && turnOffCondition) {
+    engine->memorySlots[memoryIndex] = false;
+  }
 
-    int idx = socket_number - 1;
-    SocketState &state = socketStates[idx];
-
-    // Only turn on if not already on and condition is true
-    if (condition && (!socket->getCurrentState() || !state.stateChangeProcessed))
-    {
-        Serial.printf("â†’ Turning ON socket %d\n", socket_number);
-        socket->setState(true);
-        state.stateChangeProcessed = true;
-    }
-    else
-    {
-        Serial.printf("â†’ No action for socket %d\n", socket_number);
-    }
-
-    updateSocketDuration(socket_number);
-    Serial.println("----------------------------------------");
+  return engine->memorySlots[memoryIndex] ? 1 : 0;
 }
 
-void SimpleRuleEngine::turnOff(int socket_number, int condition)
-{
-    Serial.printf("\nEvaluating OFF rule for socket %d\n", socket_number);
-    Serial.printf("Condition result: %s\n", condition ? "true" : "false");
+// State implementations
+int State::isOn(int socket_number) {
+  HomeSocketDevice *socket = engine->getSocket(socket_number);
+  if (!socket)
+    return 0;
 
-    HomeSocketDevice *socket = getSocket(socket_number);
-    if (!socket)
-        return;
-
-    int idx = socket_number - 1;
-    SocketState &state = socketStates[idx];
-
-    // Only turn off if not already off and condition is true
-    if (condition && (socket->getCurrentState() || !state.stateChangeProcessed))
-    {
-        Serial.printf("â†’ Turning OFF socket %d\n", socket_number);
-        socket->setState(false);
-        state.stateChangeProcessed = true;
-    }
-    else
-    {
-        Serial.printf("â†’ No action for socket %d\n", socket_number);
-    }
-
-    updateSocketDuration(socket_number);
-    Serial.println("----------------------------------------");
+  engine->updateSocketDuration(socket_number);
+  return socket->getCurrentState() ? 1 : 0;
 }
 
-int SimpleRuleEngine::hasBeenOnFor(int socket_number, int minutes)
-{
-    HomeSocketDevice *socket = getSocket(socket_number);
-    if (!socket || !socket->getCurrentState())
-        return 0;
-
-    int idx = socket_number - 1;
-    SocketState &state = socketStates[idx];
-
-    unsigned long duration = (millis() - state.lastStateChange) / (60 * 1000);
-    int result = (duration >= minutes) ? 1 : 0;
-
-    Serial.printf("Socket %d has been ON for %lu minutes (target: %d): %s\n",
-                  socket_number, duration, minutes, result ? "true" : "false");
-
-    return result;
+int State::isOff(int socket_number) {
+  return 1 - isOn(socket_number);
 }
 
-int SimpleRuleEngine::hasBeenOffFor(int socket_number, int minutes)
-{
-    HomeSocketDevice *socket = getSocket(socket_number);
-    if (!socket || socket->getCurrentState())
-        return 0;
+int State::hasBeenOnFor(int socket_number, int minutes) {
+  HomeSocketDevice *socket = engine->getSocket(socket_number);
+  if (!socket || !socket->getCurrentState())
+    return 0;
 
-    int idx = socket_number - 1;
-    SocketState &state = socketStates[idx];
+  int idx = socket_number - 1;
+  auto &state = engine->socketStates[idx];
 
-    unsigned long duration = (millis() - state.lastStateChange) / (60 * 1000);
-    int result = (duration >= minutes) ? 1 : 0;
+  unsigned long duration = (millis() - state.lastStateChange) / (60 * 1000);
+  int result = (duration >= minutes) ? 1 : 0;
 
-    Serial.printf("Socket %d has been OFF for %lu minutes (target: %d): %s\n",
-                  socket_number, duration, minutes, result ? "true" : "false");
+  Serial.printf("Socket %d has been ON for %lu minutes (target: %d): %s\n",
+                socket_number, duration, minutes, result ? "true" : "false");
 
-    return result;
+  return result;
+}
+
+int State::hasBeenOffFor(int socket_number, int minutes) {
+  HomeSocketDevice *socket = engine->getSocket(socket_number);
+  if (!socket || socket->getCurrentState())
+    return 0;
+
+  int idx = socket_number - 1;
+  auto &state = engine->socketStates[idx];
+
+  unsigned long duration = (millis() - state.lastStateChange) / (60 * 1000);
+  int result = (duration >= minutes) ? 1 : 0;
+
+  Serial.printf("Socket %d has been OFF for %lu minutes (target: %d): %s\n",
+                socket_number, duration, minutes, result ? "true" : "false");
+
+  return result;
+}
+
+// Core SimpleRuleEngine implementations
+HomeSocketDevice *SimpleRuleEngine::getSocket(int socket_number) {
+  if (socket_number < 1 || socket_number > MAX_SOCKETS) {
+    Serial.printf("Invalid socket number: %d\n", socket_number);
+    return nullptr;
+  }
+  return sockets[socket_number - 1];
+}
+
+void SimpleRuleEngine::updateSocketDuration(int socket_number) {
+  if (socket_number < 1 || socket_number > MAX_SOCKETS)
+    return;
+
+  int idx = socket_number - 1;
+  SocketState &state = socketStates[idx];
+
+  int currentHour, currentMinute;
+  timeSync.getCurrentHourMinute(currentHour, currentMinute);
+
+  HomeSocketDevice *socket = getSocket(socket_number);
+  if (socket && socket->getCurrentState() != state.currentState) {
+    state.currentState = socket->getCurrentState();
+    state.lastStateChange = millis();
+    state.lastChangeHour = currentHour;
+    state.lastChangeMinute = currentMinute;
+    state.stateChangeProcessed = false;
+
+    Serial.printf("Socket %d state changed to: %s at %02d:%02d\n",
+                  socket_number, state.currentState ? "ON" : "OFF", currentHour,
+                  currentMinute);
+  }
+}
+
+void SimpleRuleEngine::turnOn(int socket_number, int condition) {
+  Serial.printf("\nEvaluating ON rule for socket %d\n", socket_number);
+  Serial.printf("Condition result: %s\n", condition ? "true" : "false");
+
+  HomeSocketDevice *socket = getSocket(socket_number);
+  if (!socket)
+    return;
+
+  int idx = socket_number - 1;
+  SocketState &state = socketStates[idx];
+
+  if (condition &&
+      (!socket->getCurrentState() || !state.stateChangeProcessed)) {
+    Serial.printf("â†’ Turning ON socket %d\n", socket_number);
+    socket->setState(true);
+    state.stateChangeProcessed = true;
+  } else {
+    Serial.printf("â†’ No action for socket %d\n", socket_number);
+  }
+
+  updateSocketDuration(socket_number);
+  Serial.println("----------------------------------------");
+}
+
+void SimpleRuleEngine::turnOff(int socket_number, int condition) {
+  Serial.printf("\nEvaluating OFF rule for socket %d\n", socket_number);
+  Serial.printf("Condition result: %s\n", condition ? "true" : "false");
+
+  HomeSocketDevice *socket = getSocket(socket_number);
+  if (!socket)
+    return;
+
+  int idx = socket_number - 1;
+  SocketState &state = socketStates[idx];
+
+  if (condition && (socket->getCurrentState() || !state.stateChangeProcessed)) {
+    Serial.printf("â†’ Turning OFF socket %d\n", socket_number);
+    socket->setState(false);
+    state.stateChangeProcessed = true;
+  } else {
+    Serial.printf("â†’ No action for socket %d\n", socket_number);
+  }
+
+  updateSocketDuration(socket_number);
+  Serial.println("----------------------------------------");
+}
+
+int SimpleRuleEngine::isWeekday(uint8_t dayPattern) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return 0;
+  }
+
+  int today = timeinfo.tm_wday; // 0-6, Sunday=0
+  uint8_t todayBit = (1 << today);
+
+  int result = (dayPattern & todayBit) ? 1 : 0;
+  Serial.printf("Day check (pattern: 0x%02X): %s\n", dayPattern,
+                result ? "true" : "false");
+  return result;
 }
 -------------------
 // TimeSync.cpp
@@ -1952,313 +1999,282 @@ TimeSync::TimeData TimeSync::getTime()
 -------------------
 // WebServer.cpp
 #include "WebInterface.h"
+#include "GlobalVars.h"
 
-String WebInterface::getContentType(const String &path)
-{
-    if (path.endsWith(".html"))
-        return "text/html";
-    else if (path.endsWith(".css"))
-        return "text/css";
-    else if (path.endsWith(".js"))
-        return "application/javascript";
-    else if (path.endsWith(".json"))
-        return "application/json";
-    else if (path.endsWith(".ico"))
-        return "image/x-icon";
-    return "text/plain";
+String WebInterface::getContentType(const String &path) {
+  if (path.endsWith(".html"))
+    return "text/html";
+  else if (path.endsWith(".css"))
+    return "text/css";
+  else if (path.endsWith(".js"))
+    return "application/javascript";
+  else if (path.endsWith(".json"))
+    return "application/json";
+  else if (path.endsWith(".ico"))
+    return "image/x-icon";
+  return "text/plain";
 }
 
-bool WebInterface::serveFromCache(const String &path)
-{
-    for (int i = 0; i < MAX_CACHED_FILES; i++)
-    {
-        if (cachedFiles[i].path == path && cachedFiles[i].data != nullptr)
-        {
-            Serial.printf("Web > Serving %s from RAM cache\n", path.c_str());
-            server.sendHeader("Content-Type", getContentType(path));
-            server.sendHeader("Content-Length", String(cachedFiles[i].size));
-            server.sendHeader("Cache-Control", "no-cache");
-            server.send(200, getContentType(path), "");
-            server.client().write(cachedFiles[i].data, cachedFiles[i].size);
-            return true;
-        }
+bool WebInterface::serveFromCache(const String &path) {
+  for (int i = 0; i < MAX_CACHED_FILES; i++) {
+    if (cachedFiles[i].path == path && cachedFiles[i].data != nullptr) {
+      Serial.printf("Web > Serving %s from RAM cache\n", path.c_str());
+      server.sendHeader("Content-Type", getContentType(path));
+      server.sendHeader("Content-Length", String(cachedFiles[i].size));
+      server.sendHeader("Cache-Control", "no-cache");
+      server.send(200, getContentType(path), "");
+      server.client().write(cachedFiles[i].data, cachedFiles[i].size);
+      return true;
     }
-    return false;
+  }
+  return false;
 }
 
-void WebInterface::cacheFile(const String &path, File &file)
-{
-    static int cacheIndex = 0;
+void WebInterface::cacheFile(const String &path, File &file) {
+  static int cacheIndex = 0;
 
-    if (cachedFiles[cacheIndex].data != nullptr)
-    {
-        delete[] cachedFiles[cacheIndex].data;
-        cachedFiles[cacheIndex].data = nullptr;
-    }
+  if (cachedFiles[cacheIndex].data != nullptr) {
+    delete[] cachedFiles[cacheIndex].data;
+    cachedFiles[cacheIndex].data = nullptr;
+  }
 
-    size_t fileSize = file.size();
-    cachedFiles[cacheIndex].data = new uint8_t[fileSize];
-    if (cachedFiles[cacheIndex].data)
-    {
-        file.read(cachedFiles[cacheIndex].data, fileSize);
-        cachedFiles[cacheIndex].path = path;
-        cachedFiles[cacheIndex].size = fileSize;
-        Serial.printf("Web > Cached %s in RAM (%u bytes)\n", path.c_str(), fileSize);
+  size_t fileSize = file.size();
+  cachedFiles[cacheIndex].data = new uint8_t[fileSize];
+  if (cachedFiles[cacheIndex].data) {
+    file.read(cachedFiles[cacheIndex].data, fileSize);
+    cachedFiles[cacheIndex].path = path;
+    cachedFiles[cacheIndex].size = fileSize;
+    Serial.printf("Web > Cached %s in RAM (%u bytes)\n", path.c_str(),
+                  fileSize);
 
-        cacheIndex = (cacheIndex + 1) % MAX_CACHED_FILES;
-    }
+    cacheIndex = (cacheIndex + 1) % MAX_CACHED_FILES;
+  }
 }
 
-void WebInterface::updateCache()
-{
-    if (p1Meter)
-    {
-        cached.import_power = p1Meter->getCurrentImport();
-        cached.export_power = p1Meter->getCurrentExport();
-    }
-    cached.temperature = sensors.getTemperature();
-    cached.humidity = sensors.getHumidity();
-    cached.light = sensors.getLightLevel();
+void WebInterface::updateCache() {
+  if (p1Meter) {
+    cached.import_power = p1Meter->getCurrentImport();
+    cached.export_power = p1Meter->getCurrentExport();
+  }
+  cached.temperature = sensors.getTemperature();
+  cached.humidity = sensors.getHumidity();
+  cached.light = sensors.getLightLevel();
 
-    cached.socket_states[0] = socket1 ? socket1->getCurrentState() : false;
-    cached.socket_states[1] = socket2 ? socket2->getCurrentState() : false;
-    cached.socket_states[2] = socket3 ? socket3->getCurrentState() : false;
+  for (int i = 0; i < NUM_SOCKETS; i++) {
+    cached.socket_states[i] =
+        sockets[i] ? sockets[i]->getCurrentState() : false;
+    cached.socket_durations[i] = millis() - lastStateChangeTime[i];
+  }
 
-    for (int i = 0; i < 3; i++)
-    {
-        cached.socket_durations[i] = millis() - lastStateChangeTime[i];
-    }
+  for (int i = 0; i < 3; i++) {
+    cached.socket_durations[i] = millis() - lastStateChangeTime[i];
+  }
 }
 
-void WebInterface::begin()
-{
-    if (!SPIFFS.begin(true))
-    {
-        Serial.println("SPIFFS Mount Failed");
-        return;
-    }
-    WiFi.setTxPower(WIFI_POWER_19_5dBm);
-    server.client().setNoDelay(true);
+void WebInterface::begin() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS Mount Failed");
+    return;
+  }
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  server.client().setNoDelay(true);
 
-    Serial.printf("Total space: %d bytes\n", SPIFFS.totalBytes());
-    Serial.printf("Used space: %d bytes\n", SPIFFS.usedBytes());
+  Serial.printf("Total space: %d bytes\n", SPIFFS.totalBytes());
+  Serial.printf("Used space: %d bytes\n", SPIFFS.usedBytes());
 
-    // Serve the main page at root URL
-    server.on("/", HTTP_GET, [this]()
-              { serveFile("/data/index.html"); });
+  // Serve the main page at root URL
+  server.on("/", HTTP_GET, [this]() { serveFile("/data/index.html"); });
 
-    // API endpoint for getting data
-    server.on("/data", HTTP_GET, [this]()
-              {
-        server.sendHeader("Content-Type", "application/json");
-        server.sendHeader("Access-Control-Allow-Origin", "*");
-
-        StaticJsonDocument<2048> doc;
-        doc["import_power"] = cached.import_power;
-        doc["export_power"] = cached.export_power;
-        doc["temperature"] = cached.temperature;
-        doc["humidity"] = cached.humidity;
-        doc["light"] = cached.light;
-
-        JsonArray switches = doc.createNestedArray("switches");
-        for(int i = 0; i < 3; i++) {
-            JsonObject sw = switches.createNestedObject();
-            sw["state"] = cached.socket_states[i];
-            sw["duration"] = String(cached.socket_durations[i]/1000) + "s";
-        }
-
-        String response;
-        serializeJson(doc, response);
-        server.send(200, "application/json", response); });
-
-    // API endpoints for controlling switches
-    server.on("/switch/1", HTTP_POST, [this]()
-              { handleSwitch(1); });
-    server.on("/switch/2", HTTP_POST, [this]()
-              { handleSwitch(2); });
-    server.on("/switch/3", HTTP_POST, [this]()
-              { handleSwitch(3); });
-
-    // Handle any other static files
-    server.onNotFound([this]()
-                      {
-        if (!serveFile(server.uri())) {
-            server.send(404, "text/plain", "Not found");
-        } });
-
-    server.begin();
-    Serial.println("Web server started on IP: " + WiFi.localIP().toString());
-}
-
-void WebInterface::update()
-{
-    static unsigned long lastWebUpdate = 0;
-    static unsigned long lastClientCheck = 0;
-    unsigned long now = millis();
-
-    // Handle web clients first
-    server.handleClient();
-
-    // Only reset if we haven't seen any activity for a longer period
-    if (server.client() && server.client().connected())
-    {
-        lastWebUpdate = now; // Reset timeout if we have an active client
-        lastClientCheck = now;
-    }
-    else if (now - lastClientCheck >= 1000)
-    { // Check connection status every second
-        lastClientCheck = now;
-        if (WiFi.status() == WL_CONNECTED)
-        {
-            Serial.printf("Web > Status: No active clients (uptime: %lus)\n",
-                          (now - lastWebUpdate) / 1000);
-        }
-    }
-
-    // Only reset if really needed (increase to 2 minutes)
-    if (now - lastWebUpdate > 120000)
-    { // 2 minutes
-        Serial.println("Web > Watchdog: Server inactive, attempting reset");
-        server.close();
-        delay(100); // Give it time to close
-        server.begin();
-        Serial.println("Web > Server reset complete");
-        lastWebUpdate = now;
-    }
-
-    // Update cache periodically
-    static unsigned long lastCacheUpdate = 0;
-    if (now - lastCacheUpdate >= 1000)
-    {
-        updateCache();
-        lastCacheUpdate = now;
-    }
-
-    // WiFi check
-    if (now - lastCheck >= CHECK_INTERVAL)
-    {
-        lastCheck = now;
-        if (WiFi.status() != WL_CONNECTED)
-        {
-            Serial.println("Web > WiFi connection lost - attempting reconnect");
-            WiFi.reconnect();
-        }
-    }
-
-    yield();
-}
-
-bool WebInterface::serveFile(const String &path)
-{
-    Serial.printf("Web > Attempting to serve: %s\n", path.c_str());
-
-    if (!buffer)
-    {
-        Serial.println("Web > Error: Buffer not allocated!");
-        return false;
-    }
-
-    // Try cache first
-    if (serveFromCache(path))
-    {
-        Serial.println("Web > Served from cache successfully");
-        return true;
-    }
-
-    File file = SPIFFS.open(path, "r");
-    if (!file)
-    {
-        Serial.printf("Web > Error: Failed to open %s\n", path.c_str());
-        return false;
-    }
-
-    size_t fileSize = file.size();
-    Serial.printf("Web > Serving file from SPIFFS: %s (%u bytes)\n", path.c_str(), fileSize);
-
-    String contentType = getContentType(path);
-    server.sendHeader("Content-Type", contentType);
-    server.sendHeader("Content-Length", String(fileSize));
-    server.sendHeader("Connection", "close");
-    server.sendHeader("Cache-Control", "no-cache");
-    server.setContentLength(fileSize);
-    server.send(200, contentType, "");
-
-    size_t totalBytesSent = 0;
-    while (totalBytesSent < fileSize)
-    {
-        if (!server.client().connected())
-        {
-            Serial.println("Web > Error: Client disconnected during transfer");
-            file.close();
-            return false;
-        }
-
-        size_t bytesRead = file.read(buffer, min(BUFFER_SIZE, fileSize - totalBytesSent));
-        if (bytesRead == 0)
-        {
-            Serial.println("Web > Error: Failed to read file");
-            break;
-        }
-
-        size_t bytesWritten = server.client().write(buffer, bytesRead);
-        if (bytesWritten != bytesRead)
-        {
-            Serial.printf("Web > Warning: Partial write %u/%u bytes\n", bytesWritten, bytesRead);
-            delay(50);
-            continue;
-        }
-
-        totalBytesSent += bytesWritten;
-        if (totalBytesSent % (BUFFER_SIZE * 4) == 0)
-        {
-            Serial.printf("Web > Progress: %u/%u bytes sent\n", totalBytesSent, fileSize);
-        }
-        delay(1);
-        yield();
-    }
-
-    file.close();
-
-    if (totalBytesSent == fileSize)
-    {
-        Serial.println("Web > File served successfully");
-        // Try to cache the file for next time
-        file = SPIFFS.open(path, "r");
-        if (file)
-        {
-            cacheFile(path, file);
-            file.close();
-        }
-        return true;
-    }
-    else
-    {
-        Serial.printf("Web > Error: Only sent %u/%u bytes\n", totalBytesSent, fileSize);
-        return false;
-    }
-}
-
-void WebInterface::handleSwitch(int switchNumber)
-{
-    if (!server.hasArg("plain"))
-    {
-        server.send(400, "text/plain", "Body not received");
-        return;
-    }
-
-    StaticJsonDocument<200> doc;
-    DeserializationError error = deserializeJson(doc, server.arg("plain"));
-
-    if (error)
-    {
-        server.send(400, "text/plain", "Invalid JSON");
-        return;
-    }
-
-    bool state = doc["state"];
+  // API endpoint for getting data
+  server.on("/data", HTTP_GET, [this]() {
     server.sendHeader("Content-Type", "application/json");
     server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.send(200, "application/json", "{\"success\":true}");
+
+    StaticJsonDocument<2048> doc;
+    doc["import_power"] = cached.import_power;
+    doc["export_power"] = cached.export_power;
+    doc["temperature"] = cached.temperature;
+    doc["humidity"] = cached.humidity;
+    doc["light"] = cached.light;
+
+    JsonArray switches = doc.createNestedArray("switches");
+    for (int i = 0; i < 3; i++) {
+      JsonObject sw = switches.createNestedObject();
+      sw["state"] = cached.socket_states[i];
+      sw["duration"] = String(cached.socket_durations[i] / 1000) + "s";
+    }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+  });
+
+  // API endpoints for controlling switches
+  server.on("/switch/1", HTTP_POST, [this]() { handleSwitch(1); });
+  server.on("/switch/2", HTTP_POST, [this]() { handleSwitch(2); });
+  server.on("/switch/3", HTTP_POST, [this]() { handleSwitch(3); });
+
+  // Handle any other static files
+  server.onNotFound([this]() {
+    if (!serveFile(server.uri())) {
+      server.send(404, "text/plain", "Not found");
+    }
+  });
+
+  server.begin();
+  Serial.println("Web server started on IP: " + WiFi.localIP().toString());
+}
+
+void WebInterface::update() {
+  static unsigned long lastWebUpdate = 0;
+  static unsigned long lastClientCheck = 0;
+  unsigned long now = millis();
+
+  // Handle web clients first
+  server.handleClient();
+
+  // Only reset if we haven't seen any activity for a longer period
+  if (server.client() && server.client().connected()) {
+    lastWebUpdate = now; // Reset timeout if we have an active client
+    lastClientCheck = now;
+  } else if (now - lastClientCheck >=
+             1000) { // Check connection status every second
+    lastClientCheck = now;
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("Web > Status: No active clients (uptime: %lus)\n",
+                    (now - lastWebUpdate) / 1000);
+    }
+  }
+
+  // Only reset if really needed (increase to 2 minutes)
+  if (now - lastWebUpdate > 120000) { // 2 minutes
+    Serial.println("Web > Watchdog: Server inactive, attempting reset");
+    server.close();
+    delay(100); // Give it time to close
+    server.begin();
+    Serial.println("Web > Server reset complete");
+    lastWebUpdate = now;
+  }
+
+  // Update cache periodically
+  static unsigned long lastCacheUpdate = 0;
+  if (now - lastCacheUpdate >= 1000) {
+    updateCache();
+    lastCacheUpdate = now;
+  }
+
+  // WiFi check
+  if (now - lastCheck >= CHECK_INTERVAL) {
+    lastCheck = now;
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("Web > WiFi connection lost - attempting reconnect");
+      WiFi.reconnect();
+    }
+  }
+
+  yield();
+}
+
+bool WebInterface::serveFile(const String &path) {
+  Serial.printf("Web > Attempting to serve: %s\n", path.c_str());
+
+  if (!buffer) {
+    Serial.println("Web > Error: Buffer not allocated!");
+    return false;
+  }
+
+  // Try cache first
+  if (serveFromCache(path)) {
+    Serial.println("Web > Served from cache successfully");
+    return true;
+  }
+
+  File file = SPIFFS.open(path, "r");
+  if (!file) {
+    Serial.printf("Web > Error: Failed to open %s\n", path.c_str());
+    return false;
+  }
+
+  size_t fileSize = file.size();
+  Serial.printf("Web > Serving file from SPIFFS: %s (%u bytes)\n", path.c_str(),
+                fileSize);
+
+  String contentType = getContentType(path);
+  server.sendHeader("Content-Type", contentType);
+  server.sendHeader("Content-Length", String(fileSize));
+  server.sendHeader("Connection", "close");
+  server.sendHeader("Cache-Control", "no-cache");
+  server.setContentLength(fileSize);
+  server.send(200, contentType, "");
+
+  size_t totalBytesSent = 0;
+  while (totalBytesSent < fileSize) {
+    if (!server.client().connected()) {
+      Serial.println("Web > Error: Client disconnected during transfer");
+      file.close();
+      return false;
+    }
+
+    size_t bytesRead =
+        file.read(buffer, min(BUFFER_SIZE, fileSize - totalBytesSent));
+    if (bytesRead == 0) {
+      Serial.println("Web > Error: Failed to read file");
+      break;
+    }
+
+    size_t bytesWritten = server.client().write(buffer, bytesRead);
+    if (bytesWritten != bytesRead) {
+      Serial.printf("Web > Warning: Partial write %u/%u bytes\n", bytesWritten,
+                    bytesRead);
+      delay(50);
+      continue;
+    }
+
+    totalBytesSent += bytesWritten;
+    if (totalBytesSent % (BUFFER_SIZE * 4) == 0) {
+      Serial.printf("Web > Progress: %u/%u bytes sent\n", totalBytesSent,
+                    fileSize);
+    }
+    delay(1);
+    yield();
+  }
+
+  file.close();
+
+  if (totalBytesSent == fileSize) {
+    Serial.println("Web > File served successfully");
+    // Try to cache the file for next time
+    file = SPIFFS.open(path, "r");
+    if (file) {
+      cacheFile(path, file);
+      file.close();
+    }
+    return true;
+  } else {
+    Serial.printf("Web > Error: Only sent %u/%u bytes\n", totalBytesSent,
+                  fileSize);
+    return false;
+  }
+}
+
+void WebInterface::handleSwitch(int switchNumber) {
+  if (!server.hasArg("plain")) {
+    server.send(400, "text/plain", "Body not received");
+    return;
+  }
+
+  StaticJsonDocument<200> doc;
+  DeserializationError error = deserializeJson(doc, server.arg("plain"));
+
+  if (error) {
+    server.send(400, "text/plain", "Invalid JSON");
+    return;
+  }
+
+  bool state = doc["state"];
+  server.sendHeader("Content-Type", "application/json");
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", "{\"success\":true}");
 }
 -------------------
 <!DOCTYPE html>
@@ -2599,8 +2615,7 @@ private:
 
     void showPowerPage(float importPower, float exportPower, float totalImport, float totalExport);
     void showEnvironmentPage(float temp, float humidity, float light);
-    void showSwitchesPage(bool switch1, bool switch2, bool switch3,
-                          const String &sw1Time, const String &sw2Time, const String &sw3Time);
+    void showSwitchesPage(const bool switches[], const String switchTimes[]);
     void showInfoPage();
 
 public:
@@ -2610,8 +2625,7 @@ public:
     // Basic display update (without info page)
     void updateDisplay(float importPower, float exportPower, float totalImport, float totalExport,
                        float temp, float humidity, float light,
-                       bool sw1, bool sw2, bool sw3,
-                       const String &sw1Time, const String &sw2Time, const String &sw3Time);
+                       const bool switches[], const String switchTimes[]);
 };
 
 #endif
@@ -2659,15 +2673,21 @@ public:
 #include "HomeSocketDevice.h"
 #include "EnvironmentSensor.h"
 #include "TimeSync.h"
+#include "RulesEngine.h"
+class SimpleRuleEngine; // Forward declaration
+extern SimpleRuleEngine ruleEngine;
+
 #include "DisplayManager.h"
 #include "NetworkCheck.h"
 
 // External variable declarations
 extern HomeP1Device *p1Meter;
-extern HomeSocketDevice *socket1;
-extern HomeSocketDevice *socket2;
-extern HomeSocketDevice *socket3;
-extern unsigned long lastStateChangeTime[3];
+
+// Define constants
+static const uint8_t NUM_SOCKETS = 4;
+
+extern unsigned long lastStateChangeTime[NUM_SOCKETS];
+extern HomeSocketDevice *sockets[NUM_SOCKETS];
 extern EnvironmentSensors sensors; // Make sure this matches your actual class name
 extern DisplayManager display;
 extern TimeSync timeSync;
@@ -2679,9 +2699,7 @@ struct Config
     String wifi_ssid;
     String wifi_password;
     String p1_ip;
-    String socket_1;
-    String socket_2;
-    String socket_3;
+    String socket_ip[NUM_SOCKETS];
     String phone_ip;
 
     float yesterdayImport;
@@ -2712,9 +2730,8 @@ struct TimingControl
     unsigned long lastLightSensorUpdate = 0;
     unsigned long lastDisplayUpdate = 0;
     unsigned long lastP1Update = 0;
-    unsigned long lastSocket1Update = 0;
-    unsigned long lastSocket2Update = 0;
-    unsigned long lastSocket3Update = 0;
+    unsigned long lastSocketUpdate = 0; // for a time interval to update the socket array (as group) each socket will have individual timers too
+    unsigned long lastSocketUpdates[NUM_SOCKETS] = {0};
     unsigned long lastWiFiCheck = 0;
     unsigned long lastPhoneCheck = 0;
 };
@@ -2819,7 +2836,7 @@ extern HomeP1Device *p1Meter;
 extern HomeSocketDevice *socket1;
 extern HomeSocketDevice *socket2;
 extern HomeSocketDevice *socket3;
-extern unsigned long lastStateChangeTime[3];
+extern unsigned long lastStateChangeTime[NUM_SOCKETS];
 extern NetworkCheck *phoneCheck;
 // Timing control structure
 
@@ -2844,13 +2861,13 @@ extern Config config;
 extern DisplayManager display;
 extern EnvironmentSensors sensors;
 extern HomeP1Device *p1Meter;
-extern HomeSocketDevice *socket1;
-extern HomeSocketDevice *socket2;
-extern HomeSocketDevice *socket3;
+// extern HomeSocketDevice *socket1;
+// extern HomeSocketDevice *socket2;
+// extern HomeSocketDevice *socket3;
 extern TimeSync timeSync;
 extern WebInterface webServer;
-extern unsigned long lastStateChangeTime[3];
-extern bool switchForceOff[3];
+extern unsigned long lastStateChangeTime[NUM_SOCKETS];
+extern bool switchForceOff[NUM_SOCKETS];
 extern unsigned long lastTimeDisplay;
 extern HomeP1Device *p1Meter;
 extern EnvironmentSensors sensors;
@@ -2922,39 +2939,195 @@ Read more about using header files in official GCC documentation:
 https://gcc.gnu.org/onlinedocs/cpp/Header-Files.html
 
 -------------------
-// SimpleRuleEngine.h
-#ifndef SIMPLE_RULE_ENGINE_H
-#define SIMPLE_RULE_ENGINE_H
+#ifndef RULES_ENGINE_H
+#define RULES_ENGINE_H
 
 #include "GlobalVars.h"
+#include "HomeSocketDevice.h"
+#include <string>
 
+// Forward declarations
+class SimpleRuleEngine;
+class Turn;
+class Find;
+class Logical;
+class Time;
+class Sensor;
+class Memory;
+class State;
+
+// Base class for command groups
+class CommandBase
+{
+protected:
+    SimpleRuleEngine *engine;
+
+public:
+    CommandBase(SimpleRuleEngine *e) : engine(e) {}
+};
+
+// Command Classes
+class Turn : public CommandBase
+{
+public:
+    class OnOff
+    {
+    public:
+        OnOff(Turn *t) : turn(t) {}
+        int after(const char *timeStr);
+        int before(const char *timeStr);
+        int inbetween(const char *startTime, const char *endTime);
+
+    private:
+        Turn *turn;
+    };
+
+    Turn(SimpleRuleEngine *e) : CommandBase(e), on(this), off(this) {}
+    OnOff on;
+    OnOff off;
+};
+
+class Find : public CommandBase
+{
+public:
+    Find(SimpleRuleEngine *e) : CommandBase(e) {}
+    int response(const char *ip = nullptr);
+    int noResponse(const char *ip = nullptr);
+};
+
+class Logical : public CommandBase
+{
+public:
+    Logical(SimpleRuleEngine *e) : CommandBase(e) {}
+    int OR(int func1, int func2);
+    int AND(int func1, int func2);
+    int NOT(int func);
+};
+
+class Time : public CommandBase
+{
+private:
+    char timeBuffer[6];
+
+public:
+    Time(SimpleRuleEngine *e) : CommandBase(e) {}
+    int after(const char *timeStr);
+    int before(const char *timeStr);
+    const char *addTime(const char *timeStr, int minutes); // Returns formatted time string
+    int random59();                                        // returns a daily random minute value
+};
+
+class Sensor : public CommandBase
+{
+public:
+    Sensor(SimpleRuleEngine *e) : CommandBase(e) {}
+    void updateLight();
+    int lightAbove(int lux_value);
+    int lightBelow(int lux_value);
+};
+
+class Memory : public CommandBase
+{
+public:
+    Memory(SimpleRuleEngine *e) : CommandBase(e) {}
+    int set(int slot, unsigned long value);
+    int read(int slot);
+    int delay(int memSlot, int triggerFunction);
+    int until(int memoryIndex, int turnOnCondition, int turnOffCondition);
+};
+
+class State : public CommandBase
+{
+public:
+    State(SimpleRuleEngine *e) : CommandBase(e) {}
+    int isOn(int socket_number);
+    int isOff(int socket_number);
+    int hasBeenOnFor(int socket_number, int minutes);
+    int hasBeenOffFor(int socket_number, int minutes);
+};
+
+// Main Engine Class
 class SimpleRuleEngine
 {
+    friend class CommandBase;
+    friend class Turn;
+    friend class Find;
+    friend class Logical;
+    friend class Time;
+    friend class Sensor;
+    friend class Memory;
+    friend class State;
+
     struct SocketState
     {
-        bool currentState;             // Current on/off state
-        unsigned long lastStateChange; // When the current state started (millis)
-        int lastChangeHour;            // Hour of last state change (for time persistence)
-        int lastChangeMinute;          // Minute of last state change
-        bool stateChangeProcessed;     // Flag to prevent multiple triggers in same state
+        bool currentState;
+        unsigned long lastStateChange;
+        int lastChangeHour;
+        int lastChangeMinute;
+        bool stateChangeProcessed;
     };
+
+public:
+    static const int MEMORY_SLOTS = 32;
+    static const int MAX_SOCKETS = 3;
 
 private:
     float current_lux;
-    static const int MEMORY_SLOTS = 32;  // used in TurnUntil
-    bool memory[MEMORY_SLOTS] = {false}; // used in TurnUntil
-
-    static const int MAX_SOCKETS = 3;
+    bool memorySlots[MEMORY_SLOTS] = {false};
     SocketState socketStates[MAX_SOCKETS];
-    HomeSocketDevice *sockets[MAX_SOCKETS]; // Array instead of individual pointers
+    HomeSocketDevice *sockets[MAX_SOCKETS] = {nullptr};
 
-    // Helper function to get socket and validate
     HomeSocketDevice *getSocket(int socket_number);
     void updateSocketDuration(int socket_number);
 
 public:
-    // In the header:
+    void initSocket(int socket_number, const char *ip)
+    {
+        if (socket_number >= 1 && socket_number <= MAX_SOCKETS)
+        {
+            int idx = socket_number - 1;
+            if (sockets[idx])
+            {
+                delete sockets[idx];
+            }
+            sockets[idx] = new HomeSocketDevice(ip);
+            socketStates[idx] = {false, 0, 0, 0, true};
+        }
+    }
 
+    ~SimpleRuleEngine()
+    {
+        for (int i = 0; i < MAX_SOCKETS; i++)
+        {
+            if (sockets[i])
+            {
+                delete sockets[i];
+                sockets[i] = nullptr;
+            }
+        }
+    }
+
+    void update()
+    {
+        for (int i = 0; i < MAX_SOCKETS; i++)
+        {
+            if (sockets[i])
+            {
+                sockets[i]->update();
+            }
+        }
+    }
+
+    // Command groups with cleaner names
+    Turn turn;
+    Find find;
+    Logical logical;
+    Time time;
+    Sensor sensor;
+    Memory memory;
+    State state;
+
+    // Weekday constants
     static const uint8_t SUNDAY = 0b00000001;
     static const uint8_t MONDAY = 0b00000010;
     static const uint8_t TUESDAY = 0b00000100;
@@ -2963,62 +3136,32 @@ public:
     static const uint8_t FRIDAY = 0b00100000;
     static const uint8_t SATURDAY = 0b01000000;
 
-    // Convenient combinations
     static const uint8_t WEEKDAYS = MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY;
     static const uint8_t WEEKEND = SATURDAY | SUNDAY;
     static const uint8_t EVERYDAY = WEEKDAYS | WEEKEND;
 
-    int isWeekday(uint8_t dayPattern);
-
-public:
-    SimpleRuleEngine()
+    SimpleRuleEngine() : turn(this),
+                         find(this),
+                         logical(this),
+                         time(this),
+                         sensor(this),
+                         memory(this),
+                         state(this)
     {
-        // Initialize socket pointers to nullptr
         for (int i = 0; i < MAX_SOCKETS; i++)
         {
             sockets[i] = nullptr;
             socketStates[i] = {false, 0, 0, 0, true};
         }
     }
-    void updateLightLevel();
-    int lightSensorAbove(int lux_value);
-    int lightSensorBelow(int lux_value);
-    int phoneFound();
-    int phoneNotFound();
+
+    // Core control functions
     void turnOn(int socket_number, int condition);
     void turnOff(int socket_number, int condition);
-
-    // Time functions
-    int after(const char *timeStr);
-    int before(const char *timeStr);
-    int isOn(int socket_number);
-    int isOff(int socket_number);
-
-    // Time-based functions
-    int turnOnInbetween(const char *startTime, const char *endTime);
-    int turnOnAfter(const char *startTime);
-    int turnOffAfter(const char *startTime);
-
-    int turnOnBefore(const char *startTime);
-    int turnOfBefore(const char *startTime);
-
-    int hasBeenOnFor(int socket_number, int minutes);
-    int hasBeenOffFor(int socket_number, int minutes);
-
-    int setMem(int slot, unsigned long value);
-    int readMem(int slot);
-    int Delay(int memSlot, int triggerFunction);
-
-    // Logical operators
-    int OR(int func1, int func2);
-    int AND(int func1, int func2);
-    int NOT(int func);
-
-    int TurnUntil(int memoryIndex, int turnOnCondition, int turnOffCondition);
+    int isWeekday(uint8_t dayPattern);
 };
 
 #endif
-
 -------------------
 // TimeSync.h
 #ifndef TIME_SYNC_H

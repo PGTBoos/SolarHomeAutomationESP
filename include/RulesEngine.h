@@ -65,10 +65,15 @@ public:
 
 class Time : public CommandBase
 {
+private:
+    char timeBuffer[6];
+
 public:
     Time(SimpleRuleEngine *e) : CommandBase(e) {}
     int after(const char *timeStr);
     int before(const char *timeStr);
+    const char *addTime(const char *timeStr, int minutes); // Returns formatted time string
+    int random59();                                        // returns a daily random minute value
 };
 
 class Sensor : public CommandBase

@@ -21,12 +21,15 @@ bool DisplayManager::begin() {
   display.clearBuffer();
 
   // Draw initial test pattern
-  display.drawStr(5, 8, "Starting...");
+  display.drawStr(5, 8, "Starting.!!");
   display.drawFrame(0, 0, display.getWidth(), display.getHeight());
   display.sendBuffer();
 
   displayFound = true;
+  currentPage = 0;
+  lastPageChange = millis() - PAGE_DURATION;
   Serial.println("Display initialized successfully!");
+
   return true;
 }
 
@@ -137,10 +140,8 @@ void DisplayManager::showEnvironmentPage(float temp, float humidity,
   display.sendBuffer();
 }
 
-void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
-                                      const String &sw1Time,
-                                      const String &sw2Time,
-                                      const String &sw3Time) {
+void DisplayManager::showSwitchesPage(const bool switches[],
+                                      const String switchTimes[]) {
   if (!displayFound)
     return;
 
@@ -169,10 +170,11 @@ void DisplayManager::showSwitchesPage(bool switch1, bool switch2, bool switch3,
     }
   };
 
-  // Draw all switches with more spacing due to larger font
-  drawSwitch(20, "SW 1:", switch1);
-  drawSwitch(40, "SW 2:", switch2);
-  drawSwitch(60, "SW 3:", switch3);
+  for (int i = 0; i < NUM_SOCKETS; i++) {
+    char name[10];
+    snprintf(name, sizeof(name), "SW %d:", i + 1);
+    drawSwitch(20 + (i * 20), name, switches[i]);
+  }
 
   display.sendBuffer();
 }
@@ -251,12 +253,12 @@ void DisplayManager::showInfoPage() {
 void DisplayManager::updateDisplay(float importPower, float exportPower,
                                    float totalImport, float totalExport,
                                    float temp, float humidity, float light,
-                                   bool sw1, bool sw2, bool sw3,
-                                   const String &sw1Time, const String &sw2Time,
-                                   const String &sw3Time) {
-  if (!displayFound)
-    return;
-
+                                   const bool switches[],
+                                   const String switchTimes[]) {
+  // if (!displayFound)
+  //   Serial.println("Display not found");
+  // return;
+  Serial.printf("UpdateDisplay called - currentPage: %d\n", currentPage);
   // Rotate pages every PAGE_DURATION milliseconds
   if (millis() - lastPageChange >= PAGE_DURATION) {
     currentPage = (currentPage + 1) % 4; // Cycle through 4 pages
@@ -274,7 +276,7 @@ void DisplayManager::updateDisplay(float importPower, float exportPower,
     showEnvironmentPage(temp, humidity, light);
     break;
   case 2:
-    showSwitchesPage(sw1, sw2, sw3, sw1Time, sw2Time, sw3Time);
+    showSwitchesPage(switches, switchTimes);
     break;
   case 3:
     showInfoPage(); // Now using the parameter-less version

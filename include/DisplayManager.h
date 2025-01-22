@@ -17,8 +17,7 @@ private:
 
     void showPowerPage(float importPower, float exportPower, float totalImport, float totalExport);
     void showEnvironmentPage(float temp, float humidity, float light);
-    void showSwitchesPage(bool switch1, bool switch2, bool switch3,
-                          const String &sw1Time, const String &sw2Time, const String &sw3Time);
+    void showSwitchesPage(const bool switches[], const String switchTimes[]);
     void showInfoPage();
 
 public:
@@ -28,8 +27,7 @@ public:
     // Basic display update (without info page)
     void updateDisplay(float importPower, float exportPower, float totalImport, float totalExport,
                        float temp, float humidity, float light,
-                       bool sw1, bool sw2, bool sw3,
-                       const String &sw1Time, const String &sw2Time, const String &sw3Time);
+                       const bool switches[], const String switchTimes[]);
 };
 
 #endif

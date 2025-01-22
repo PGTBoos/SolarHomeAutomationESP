@@ -18,7 +18,7 @@ extern HomeP1Device *p1Meter;
 extern HomeSocketDevice *socket1;
 extern HomeSocketDevice *socket2;
 extern HomeSocketDevice *socket3;
-extern unsigned long lastStateChangeTime[3];
+extern unsigned long lastStateChangeTime[NUM_SOCKETS];
 extern NetworkCheck *phoneCheck;
 // Timing control structure
 
@@ -43,13 +43,13 @@ extern Config config;
 extern DisplayManager display;
 extern EnvironmentSensors sensors;
 extern HomeP1Device *p1Meter;
-extern HomeSocketDevice *socket1;
-extern HomeSocketDevice *socket2;
-extern HomeSocketDevice *socket3;
+// extern HomeSocketDevice *socket1;
+// extern HomeSocketDevice *socket2;
+// extern HomeSocketDevice *socket3;
 extern TimeSync timeSync;
 extern WebInterface webServer;
-extern unsigned long lastStateChangeTime[3];
-extern bool switchForceOff[3];
+extern unsigned long lastStateChangeTime[NUM_SOCKETS];
+extern bool switchForceOff[NUM_SOCKETS];
 extern unsigned long lastTimeDisplay;
 extern HomeP1Device *p1Meter;
 extern EnvironmentSensors sensors;
